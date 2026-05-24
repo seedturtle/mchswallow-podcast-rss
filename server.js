@@ -6,7 +6,8 @@ const PORT = parseInt(process.env.PORT || "3000", 10);
 const SITE_URL = process.env.SITE_URL || "https://mchswallowpodcast.zeabur.app";
 const PODCAST_FOLDER_ID = process.env.PODCAST_FOLDER_ID || "1Yiwx-jIqmw37TvbMl5dDbVPcgetEPzIW";
 const MATON_API_KEY = process.env.MATON_API_KEY || "";
-const MATON_CONNECTION_ID = process.env.MATON_CONNECTION_ID || "seedturtle-zo";
+// 支援 MATON_CONN（README 標準）或 MATON_CONNECTION_ID（舊版）
+const MATON_CONNECTION_ID = process.env.MATON_CONN || process.env.MATON_CONNECTION_ID || "aa84aef8-287a-4271-a4b7-26a67b0c6adf";
 const PODCAST_TITLE = process.env.PODCAST_TITLE || "MCH Swallow 吞嚥 Podcast";
 const PODCAST_DESCRIPTION = process.env.PODCAST_DESCRIPTION || "吞嚥復健、肌能訓練與臨床經驗分享";
 const PODCAST_EMAIL = process.env.PODCAST_EMAIL || "mchswallow@gmail.com";
@@ -51,8 +52,7 @@ function matonFetch(path, opts = {}) {
 }
 
 async function getAudioFiles() {
-  const folderId = encodeURIComponent(PODCAST_FOLDER_ID);
-  const query = encodeURIComponent(`'${folderId}' in parents and mimeType='audio/mpeg' and trashed=false`);
+  const query = encodeURIComponent(`'${PODCAST_FOLDER_ID}' in parents and mimeType='audio/mpeg' and trashed=false`);
   const res = await matonFetch(
     `/google-drive/drive/v3/files?q=${query}&fields=files(id,name,mimeType,createdTime,size)&orderBy=createdTime desc`
   );
