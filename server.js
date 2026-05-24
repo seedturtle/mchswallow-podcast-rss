@@ -195,42 +195,65 @@ const server = http.createServer(async (req, res) => {
     console.log(`[AUDIO] ${isHead ? "HEAD" : "GET"}: ${fileId}${rangeHeader ? " (" + rangeHeader + ")" : ""}`);
 
     try {
-      // HEAD 但無 Range → 取第一個 byte 就知道總大小
-      const fetchOpts = { binary: true };
-      const effectiveRange = rangeHeader || (isHead ? "bytes=0-0" : null);
-      if (effectiveRange) fetchOpts.headers = { Range: effectiveRange };
+      // Step 1: 先探測檔案大小（用 Range: bytes=0-0 取 Content-Range）
+      const probeOpts = { binary: true, headers: { Range: "bytes=0-0" } };
+      const probeRes = await matonFetch(`/google-drive/drive/v3/files/${fileId}?alt=media`, probeOpts);
 
-      const apiRes = await matonFetch(`/google-drive/drive/v3/files/${fileId}?alt=media`, fetchOpts);
+      let totalSize = null;
+      if (probeRes.headers["content-range"]) {
+        const match = probeRes.headers["content-range"].match(/\/(\d+)$/);
+        if (match) totalSize = parseInt(match[1]);
+      }
+      // 只用 Content-Range，不從 Content-Length（Range response 的 Content-Length 只是片段大小）
 
-      if (apiRes.status === 200 || apiRes.status === 206) {
-        const ctype = apiRes.headers["content-type"] || "audio/mpeg";
-        res.setHeader("Content-Type", ctype);
+      const commonHeaders = {
+        "Content-Type": probeRes.headers["content-type"] || "audio/mpeg",
+        "Accept-Ranges": "bytes",
+        "Access-Control-Allow-Origin": "*",
+        "Cache-Control": "public, max-age=86400",
+      };
+      if (totalSize) commonHeaders["Content-Length"] = totalSize;
 
-        // 從 Content-Range 解析總長度（例如 "bytes 0-0/4248181"）
-        let totalSize = null;
-        if (apiRes.headers["content-range"]) {
-          const match = apiRes.headers["content-range"].match(/\/(\d+)$/);
-          if (match) totalSize = parseInt(match[1]);
-        }
-        if (apiRes.headers["content-length"]) totalSize = parseInt(apiRes.headers["content-length"]);
-        if (totalSize) res.setHeader("Content-Length", totalSize);
-        if (apiRes.headers["content-range"]) res.setHeader("Content-Range", apiRes.headers["content-range"]);
+      // HEAD：回傳 200，只給 header 即可
+      if (isHead) {
+        res.writeHead(totalSize ? 200 : probeRes.status, commonHeaders);
+        res.end();
+        return;
+      }
 
-        res.setHeader("Accept-Ranges", "bytes");
-        res.setHeader("Access-Control-Allow-Origin", "*");
-        res.setHeader("Cache-Control", "public, max-age=86400");
-
-        if (isHead) {
-          res.writeHead(apiRes.status);
-          res.end();
+      // GET without Range：取完整檔案
+      if (!rangeHeader) {
+        const fullRes = await matonFetch(`/google-drive/drive/v3/files/${fileId}?alt=media`, { binary: true });
+        if (fullRes.status === 200) {
+          res.writeHead(200, commonHeaders);
+          res.end(fullRes.body);
         } else {
-          res.writeHead(apiRes.status);
-          res.end(apiRes.body);
+          console.error(`[AUDIO] Error ${fullRes.status}:`, fullRes.body.error || fullRes.body.message);
+          res.writeHead(fullRes.status, { "Content-Type": "text/plain" });
+          res.end(fullRes.body.error ? JSON.stringify(fullRes.body) : "Audio not found");
         }
+        return;
+      }
+
+      // GET with Range：轉送 Range header 給 Maton，回傳 206
+      const rangeOpts = { binary: true, headers: { Range: rangeHeader } };
+      const rangeRes = await matonFetch(`/google-drive/drive/v3/files/${fileId}?alt=media`, rangeOpts);
+
+      if (rangeRes.status === 206 || rangeRes.status === 200) {
+        const rangeHeaders = {
+          "Content-Type": rangeRes.headers["content-type"] || "audio/mpeg",
+          "Accept-Ranges": "bytes",
+          "Access-Control-Allow-Origin": "*",
+          "Cache-Control": "public, max-age=86400",
+        };
+        if (rangeRes.headers["content-range"]) rangeHeaders["Content-Range"] = rangeRes.headers["content-range"];
+        if (totalSize) rangeHeaders["Content-Length"] = rangeRes.headers["content-length"] || totalSize;
+        res.writeHead(rangeRes.status === 200 ? 206 : rangeRes.status, rangeHeaders);
+        res.end(rangeRes.body);
       } else {
-        console.error(`[AUDIO] Error ${apiRes.status}:`, apiRes.body.error || apiRes.body.message);
-        res.writeHead(apiRes.status, { "Content-Type": "text/plain" });
-        res.end(apiRes.body.error ? JSON.stringify(apiRes.body) : "Audio not found");
+        console.error(`[AUDIO] Error ${rangeRes.status}:`, rangeRes.body.error || rangeRes.body.message);
+        res.writeHead(rangeRes.status, { "Content-Type": "text/plain" });
+        res.end(rangeRes.body.error ? JSON.stringify(rangeRes.body) : "Audio not found");
       }
     } catch (e) {
       console.error("[AUDIO] Error:", e.message);
