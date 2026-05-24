@@ -84,7 +84,7 @@ function parseEpisodeMeta(file, index, totalFiles) {
   const description = `${PODCAST_TITLE}，${title}。${PODCAST_DESCRIPTION}`;
   const pubDate = file.createdTime ? new Date(file.createdTime).toUTCString() : new Date().toUTCString();
   const size = parseInt(file.size || 0);
-  const audioUrl = `${SITE_URL.replace(/\/$/, "")}/audio/${file.id}`;
+  const audioUrl = `${SITE_URL.replace(/\/$/, "")}/audio/${file.id}.mp3`;
   const duration = Math.floor(size / 16000); // 粗略估算秒數
   const durationFormatted = formatDuration(duration);
 
@@ -189,7 +189,7 @@ const server = http.createServer(async (req, res) => {
 
   const audioMatch = pathname.match(/^\/audio\/(.+)/);
   if (audioMatch) {
-    const fileId = audioMatch[1];
+    const fileId = audioMatch[1].replace(/\.mp3$/i, "");
     const isHead = req.method === "HEAD";
     const rangeHeader = req.headers["range"];
     console.log(`[AUDIO] ${isHead ? "HEAD" : "GET"}: ${fileId}${rangeHeader ? " (" + rangeHeader + ")" : ""}`);
