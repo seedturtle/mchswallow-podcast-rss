@@ -66,7 +66,6 @@ async function getAudioFiles() {
 function buildRSS(files) {
   const base = SITE_URL.replace(/\/$/, "");
   const items = files
-    .filter((f) => f.name && f.name.endsWith(".mp3"))
     .map((f) => {
       const audioUrl = `${base}/audio/${f.id}`;
       const pubDate = f.createdTime ? new Date(f.createdTime).toUTCString() : new Date().toUTCString();
