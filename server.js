@@ -10,9 +10,9 @@ const PODCAST_FOLDER_ID = process.env.PODCAST_FOLDER_ID || "1Yiwx-jIqmw37TvbMl5d
 const MATON_API_KEY = process.env.MATON_API_KEY || "";
 // 支援 MATON_CONN（README 標準）或 MATON_CONNECTION_ID（舊版）
 const MATON_CONNECTION_ID = process.env.MATON_CONN || process.env.MATON_CONNECTION_ID || "aa84aef8-287a-4271-a4b7-26a67b0c6adf";
-const PODCAST_TITLE = process.env.PODCAST_TITLE || "MCH Swallow 吞嚥 Podcast";
+const PODCAST_TITLE = process.env.PODCAST_TITLE || "門諾醫院聽語團隊PODCAST";
 const PODCAST_DESCRIPTION = process.env.PODCAST_DESCRIPTION || "吞嚥復健、肌能訓練與臨床經驗分享";
-const PODCAST_AUTHOR = process.env.PODCAST_AUTHOR || "MCH 吞嚥團隊";
+const PODCAST_AUTHOR = process.env.PODCAST_AUTHOR || "門諾醫院聽語團隊";
 const PODCAST_EMAIL = process.env.PODCAST_EMAIL || "mchswallow@gmail.com";
 const PODCAST_COVER_URL = process.env.PODCAST_COVER_URL || `${SITE_URL.replace(/\/$/, "")}/cover.png`;
 
