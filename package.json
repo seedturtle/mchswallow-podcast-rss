@@ -1,0 +1,9 @@
+{
+  "name": "mchswallow-podcast-rss",
+  "version": "1.0.0",
+  "description": "MCH Swallow 吞嚥 Podcast RSS Feed Server — 自動從 Google Drive 生成 Podcast RSS",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  }
+}
