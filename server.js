@@ -19,7 +19,8 @@ const MATON_CONN =
   process.env.MATON_CONN || "";
 const MATON_BASE = "https://gateway.maton.ai";
 
-const SITE_URL = process.env.SITE_URL || "https://your-app.zeabur.app";
+const SITE_URL =
+  process.env.SITE_URL || "https://mchswallowpodcast.zeabur.app";
 
 // ── Podcast 設定（可透過環境變數覆蓋）────────────────────
 const PODCAST_TITLE =
