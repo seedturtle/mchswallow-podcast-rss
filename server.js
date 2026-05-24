@@ -86,8 +86,17 @@ function parseEpisodeMeta(file, index, totalFiles) {
   const size = parseInt(file.size || 0);
   const audioUrl = `${SITE_URL.replace(/\/$/, "")}/audio/${file.id}`;
   const duration = Math.floor(size / 16000); // 粗略估算秒數
+  const durationFormatted = formatDuration(duration);
 
-  return { title, description, pubDate, size, audioUrl, duration, episodeNum };
+  return { title, description, pubDate, size, audioUrl, duration, durationFormatted, episodeNum };
+}
+
+function formatDuration(totalSeconds) {
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
+  return `${m}:${String(s).padStart(2,"0")}`;
 }
 
 function buildRSS(files) {
@@ -107,7 +116,8 @@ function buildRSS(files) {
       <itunes:title>${meta.title}</itunes:title>
       <itunes:episode>${meta.episodeNum}</itunes:episode>
       <itunes:episodeType>full</itunes:episodeType>
-      <itunes:duration>${meta.duration}</itunes:duration>
+      <itunes:image href="${PODCAST_COVER_URL}"/>
+      <itunes:duration>${meta.durationFormatted}</itunes:duration>
       <itunes:explicit>false</itunes:explicit>
     </item>`;
     })
