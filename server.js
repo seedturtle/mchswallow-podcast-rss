@@ -185,16 +185,27 @@ const server = http.createServer(async (req, res) => {
     console.log(`[AUDIO] ${isHead ? "HEAD" : "GET"}: ${fileId}${rangeHeader ? " (" + rangeHeader + ")" : ""}`);
 
     try {
+      // HEAD 但無 Range → 取第一個 byte 就知道總大小
       const fetchOpts = { binary: true };
-      if (rangeHeader) fetchOpts.headers = { Range: rangeHeader };
+      const effectiveRange = rangeHeader || (isHead ? "bytes=0-0" : null);
+      if (effectiveRange) fetchOpts.headers = { Range: effectiveRange };
 
       const apiRes = await matonFetch(`/google-drive/drive/v3/files/${fileId}?alt=media`, fetchOpts);
 
       if (apiRes.status === 200 || apiRes.status === 206) {
         const ctype = apiRes.headers["content-type"] || "audio/mpeg";
         res.setHeader("Content-Type", ctype);
-        if (apiRes.headers["content-length"]) res.setHeader("Content-Length", apiRes.headers["content-length"]);
+
+        // 從 Content-Range 解析總長度（例如 "bytes 0-0/4248181"）
+        let totalSize = null;
+        if (apiRes.headers["content-range"]) {
+          const match = apiRes.headers["content-range"].match(/\/(\d+)$/);
+          if (match) totalSize = parseInt(match[1]);
+        }
+        if (apiRes.headers["content-length"]) totalSize = parseInt(apiRes.headers["content-length"]);
+        if (totalSize) res.setHeader("Content-Length", totalSize);
         if (apiRes.headers["content-range"]) res.setHeader("Content-Range", apiRes.headers["content-range"]);
+
         res.setHeader("Accept-Ranges", "bytes");
         res.setHeader("Access-Control-Allow-Origin", "*");
         res.setHeader("Cache-Control", "public, max-age=86400");
