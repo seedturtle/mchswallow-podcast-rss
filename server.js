@@ -183,53 +183,29 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    const matonUrl = new URL(
-      `https://gateway.maton.ai/google-drive/drive/v3/files/${fileId}?alt=media&acknowledgeAbuse=true`
-    );
-
-    const proxyReq = https.get(
-      {
-        hostname: matonUrl.hostname,
-        path: matonUrl.pathname + matonUrl.search,
-        headers: {
-          Authorization: `Bearer ${MATON_API_KEY}`,
-          "Maton-Connection": MATON_CONN,
-        },
-      },
-      (driveRes) => {
-        if (driveRes.statusCode === 200) {
-          const contentLen = driveRes.headers["content-length"] || "";
-          res.writeHead(200, {
-            "Content-Type": "audio/mpeg",
-            "Content-Length": contentLen,
-            "Accept-Ranges": "bytes",
-            "Cache-Control": "public, max-age=86400",
-          });
-          if (isHead) {
-            driveRes.destroy();
-            res.end();
+    const gdriveUrl = `https://drive.google.com/uc?export=download&id=${fileId}&format=mp3`;
+    
+    const req1 = https.get(gdriveUrl, { headers: { "User-Agent": "Mozilla/5.0" } }, (r1) => {
+      if (r1.statusCode === 303) {
+        const finalUrl = r1.headers.location;
+        if (!finalUrl) { res.writeHead(502); res.end("No redirect URL"); return; }
+        const req2 = https.get(finalUrl, { headers: { "User-Agent": "Mozilla/5.0" } }, (r2) => {
+          if (r2.statusCode === 200) {
+            const cl = r2.headers["content-length"] || "";
+            const ct = r2.headers["content-type"] || "audio/mpeg";
+            res.writeHead(200, { "Content-Type": ct, "Content-Length": cl, "Accept-Ranges": "bytes", "Cache-Control": "public, max-age=86400" });
+            if (isHead) { r2.destroy(); res.end(); }
+            else { r2.pipe(res); }
           } else {
-            driveRes.pipe(res);
+            res.writeHead(r2.statusCode);
+            res.end();
           }
-        } else {
-          let body = "";
-          driveRes.on("data", (c) => (body += c));
-          driveRes.on("end", () => {
-            console.error(`[AUDIO] Maton ${driveRes.statusCode}: ${body.slice(0, 200)}`);
-            if (res.headersSent) return;
-            res.writeHead(502);
-            res.end("Audio proxy error");
-          });
-        }
+        }).on("error", (e) => { if (!res.headersSent) { res.writeHead(502); res.end(); } });
+      } else {
+        res.writeHead(r1.statusCode);
+        res.end();
       }
-    );
-    proxyReq.on("error", (err) => {
-      console.error(`[AUDIO] Error: ${err.message}`);
-      if (res.headersSent) return;
-      if (res.headersSent) return;
-      res.writeHead(502);
-      res.end("Audio proxy error");
-    });
+    }).on("error", (e) => { if (!res.headersSent) { res.writeHead(502); res.end(); } });
     return;
   }
 
