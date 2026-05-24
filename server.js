@@ -151,7 +151,7 @@ function buildRSS(files) {
     <ttl>60</ttl>
     <atom:link href="${base}/feed.xml" rel="self" type="application/rss+xml"/>
     <podcast:locked>no</podcast:locked>
-    <podcast:guid>${PODCAST_AUTHOR.replace(/[^a-z0-9]/gi, "")}-podcast</podcast:guid>
+    <podcast:guid>mchswallowpodcast</podcast:guid>
     <podcast:medium>audio</podcast:medium>
     <podcast:showOwner>true</podcast:showOwner>
 ${items}
