@@ -12,7 +12,7 @@ const PORT = process.env.PORT || 3000;
 // ── Google Drive 設定 ──────────────────────────────────
 // 請在 Zeabur 後台設定以下環境變數：
 const PODCAST_FOLDER_ID =
-  process.env.PODCAST_FOLDER_ID || "YOUR_GOOGLE_DRIVE_FOLDER_ID";
+  process.env.PODCAST_FOLDER_ID || "1Yiwx-jIqmw37TvbMl5dDbVPcgetEPzIW";
 const MATON_API_KEY =
   process.env.MATON_API_KEY || "";
 const MATON_CONN =
