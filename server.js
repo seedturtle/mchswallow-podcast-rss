@@ -95,7 +95,7 @@ function buildRSS(files) {
     <itunes:summary><![CDATA[${PODCAST_DESCRIPTION}]]></itunes:summary>
     <itunes:explicit>false</itunes:explicit>
     <itunes:image href="${PODCAST_COVER_URL}" />
-    <itunes:category text="Education" />
+    <itunes:category text="Science" />
     <itunes:owner>
       <itunes:name>${PODCAST_AUTHOR}</itunes:name>
       <itunes:email>${PODCAST_EMAIL}</itunes:email>
