@@ -215,6 +215,7 @@ const server = http.createServer(async (req, res) => {
           driveRes.on("data", (c) => (body += c));
           driveRes.on("end", () => {
             console.error(`[AUDIO] Maton ${driveRes.statusCode}: ${body.slice(0, 200)}`);
+            if (res.headersSent) return;
             res.writeHead(502);
             res.end("Audio proxy error");
           });
