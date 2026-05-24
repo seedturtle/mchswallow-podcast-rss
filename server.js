@@ -1,5 +1,7 @@
 const http = require("http");
 const https = require("https");
+const fs = require("fs");
+const path = require("path");
 const { URL } = require("url");
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
@@ -12,7 +14,7 @@ const PODCAST_TITLE = process.env.PODCAST_TITLE || "MCH Swallow 吞嚥 Podcast";
 const PODCAST_DESCRIPTION = process.env.PODCAST_DESCRIPTION || "吞嚥復健、肌能訓練與臨床經驗分享";
 const PODCAST_AUTHOR = process.env.PODCAST_AUTHOR || "MCH 吞嚥團隊";
 const PODCAST_EMAIL = process.env.PODCAST_EMAIL || "mchswallow@gmail.com";
-const PODCAST_COVER_URL = process.env.PODCAST_COVER_URL || "https://seedturtle.zo.space/images/mch-podcast-cover.png";
+const PODCAST_COVER_URL = process.env.PODCAST_COVER_URL || `${SITE_URL.replace(/\/$/, "")}/cover.png`;
 
 function matonFetch(path, opts = {}) {
   return new Promise((resolve, reject) => {
@@ -179,6 +181,26 @@ const server = http.createServer(async (req, res) => {
   if (pathname === "/health") {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ status: "ok", time: new Date().toISOString() }));
+    return;
+  }
+
+  // 封面圖片
+  if (pathname === "/cover.png") {
+    const coverPath = path.join(__dirname, "public", "cover.png");
+    if (fs.existsSync(coverPath)) {
+      const coverData = fs.readFileSync(coverPath);
+      res.writeHead(200, {
+        "Content-Type": "image/png",
+        "Content-Length": coverData.length,
+        "Cache-Control": "public, max-age=86400",
+        "Accept-Ranges": "bytes",
+      });
+      if (req.method === "HEAD") { res.end(); return; }
+      res.end(coverData);
+    } else {
+      res.writeHead(404, { "Content-Type": "text/plain" });
+      res.end("Cover not found");
+    }
     return;
   }
 
