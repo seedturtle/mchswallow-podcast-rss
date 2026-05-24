@@ -236,20 +236,43 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, { "Content-Type": "application/rss+xml; charset=utf-8" });
       res.end(FALLBACK_RSS);
     }
-    return;
-  }
-
-  // 音頻代理：302 轉址到 Google Drive 直接下載
+  // 音頻代理：直接從 Google Drive 串流音訊（非 302 導向）
   const audioMatch = req.url.match(/^\/audio\/([a-zA-Z0-9_-]+)\.mp3$/);
   if (audioMatch) {
     const fileId = audioMatch[1];
-    const driveUrl = `https://drive.google.com/uc?export=download&id=${fileId}&format=mp3`;
-    console.log(`[AUDIO] Redirecting ${fileId} to Google Drive`);
-    res.writeHead(302, {
-      Location: driveUrl,
-      "Cache-Control": "public, max-age=86400",
+    console.log(`[AUDIO] Proxying ${fileId} from Google Drive`);
+
+    const driveUrl = `https://drive.usercontent.google.com/download?id=${fileId}`;
+
+    https.get(driveUrl, (driveRes) => {
+      if (driveRes.statusCode >= 300 && driveRes.statusCode < 400) {
+        const location = driveRes.headers.location;
+        if (location) {
+          console.log(`  ↪ Follow redirect`);
+          https.get(location, (res2) => {
+            res.writeHead(200, {
+              "Content-Type": "audio/mpeg",
+              "Content-Length": res2.headers["content-length"] || "",
+              "Accept-Ranges": "bytes",
+              "Cache-Control": "public, max-age=86400",
+            });
+            res2.pipe(res);
+          });
+          return;
+        }
+      }
+      res.writeHead(200, {
+        "Content-Type": "audio/mpeg",
+        "Content-Length": driveRes.headers["content-length"] || "",
+        "Accept-Ranges": "bytes",
+        "Cache-Control": "public, max-age=86400",
+      });
+      driveRes.pipe(res);
+    }).on("error", (err) => {
+      console.error(`[AUDIO] Error: ${err.message}`);
+      res.writeHead(502);
+      res.end("Audio proxy error");
     });
-    res.end();
     return;
   }
 
