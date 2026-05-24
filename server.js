@@ -66,6 +66,10 @@ async function getAudioFiles() {
   return res.body.files;
 }
 
+function rfc2822(date) {
+  return (date || new Date()).toUTCString().replace("GMT", "+0000");
+}
+
 function parseEpisodeMeta(file, index, totalFiles) {
   const episodeNum = totalFiles - index; // 最新的是第1集
   const dateMatch = file.name.match(/(\d{4})[_-]?(\d{2})[_-]?(\d{2})/);
@@ -82,26 +86,17 @@ function parseEpisodeMeta(file, index, totalFiles) {
   }
 
   const description = `${PODCAST_TITLE}，${title}。${PODCAST_DESCRIPTION}`;
-  const pubDate = file.createdTime ? new Date(file.createdTime).toUTCString() : new Date().toUTCString();
+  const pubDate = rfc2822(file.createdTime ? new Date(file.createdTime) : null);
   const size = parseInt(file.size || 0);
   const audioUrl = `${SITE_URL.replace(/\/$/, "")}/audio/${file.id}.mp3`;
   const duration = Math.floor(size / 16000); // 粗略估算秒數
-  const durationFormatted = formatDuration(duration);
 
-  return { title, description, pubDate, size, audioUrl, duration, durationFormatted, episodeNum };
-}
-
-function formatDuration(totalSeconds) {
-  const h = Math.floor(totalSeconds / 3600);
-  const m = Math.floor((totalSeconds % 3600) / 60);
-  const s = totalSeconds % 60;
-  if (h > 0) return `${h}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
-  return `${m}:${String(s).padStart(2,"0")}`;
+  return { title, description, pubDate, size, audioUrl, duration, episodeNum };
 }
 
 function buildRSS(files) {
   const base = SITE_URL.replace(/\/$/, "");
-  const now = new Date().toUTCString();
+  const now = rfc2822();
   const items = files
     .map((file, index) => {
       const meta = parseEpisodeMeta(file, index, files.length);
@@ -117,7 +112,7 @@ function buildRSS(files) {
       <itunes:episode>${meta.episodeNum}</itunes:episode>
       <itunes:episodeType>full</itunes:episodeType>
       <itunes:image href="${PODCAST_COVER_URL}"/>
-      <itunes:duration>${meta.durationFormatted}</itunes:duration>
+      <itunes:duration>${meta.duration}</itunes:duration>
       <itunes:explicit>false</itunes:explicit>
     </item>`;
     })
