@@ -93,7 +93,7 @@ function buildRSS(files) {
     <language>zh-TW</language>
     <itunes:author>${PODCAST_AUTHOR}</itunes:author>
     <itunes:summary><![CDATA[${PODCAST_DESCRIPTION}]]></itunes:summary>
-    <itunes:explicit>no</itunes:explicit>
+    <itunes:explicit>false</itunes:explicit>
     <itunes:image href="${PODCAST_COVER_URL}" />
     <itunes:category text="Education" />
     <itunes:owner>
