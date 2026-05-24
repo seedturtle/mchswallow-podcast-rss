@@ -177,6 +177,7 @@ const server = http.createServer(async (req, res) => {
 
     if (!MATON_API_KEY || !MATON_CONN) {
       console.error("[AUDIO] Missing MATON_API_KEY or MATON_CONN");
+      if (res.headersSent) return;
       res.writeHead(503);
       res.end("Maton API not configured");
       return;
@@ -225,12 +226,14 @@ const server = http.createServer(async (req, res) => {
     proxyReq.on("error", (err) => {
       console.error(`[AUDIO] Error: ${err.message}`);
       if (res.headersSent) return;
+      if (res.headersSent) return;
       res.writeHead(502);
       res.end("Audio proxy error");
     });
     return;
   }
 
+  if (res.headersSent) return;
   res.writeHead(404);
   res.end("Not found");
 });
