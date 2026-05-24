@@ -15,7 +15,7 @@ const PODCAST_FOLDER_ID = process.env.PODCAST_FOLDER_ID || 'YOUR_FOLDER_ID';
 // ── Google API 端點 ───────────────────────────
 const GDRIVE_BASE = 'www.googleapis.com';
 const GDRIVE_LIST_URL = `/drive/v3/files?q='${PODCAST_FOLDER_ID}'+in+parents+and+mimeType='audio/mpeg'+and+trashed=false&fields=files(id,name,mimeType,size,createdTime,modifiedTime)&orderBy=createdTime desc`;
-const GDRIVE_DOWNLOAD_BASE = 'drive/v3/files';
+const GDRIVE_DOWNLOAD_BASE = 'www.googleapis.com/drive/v3/files';
 
 // ── Podcast 基本資訊 ─────────────────────────
 const PODCAST_TITLE = process.env.PODCAST_TITLE || 'MCH Swallow 吞嚥 Podcast';
@@ -65,6 +65,7 @@ function streamGdriveFile(fileId, res) {
     };
     const req = https.request(options, (driveRes) => {
       if (driveRes.statusCode >= 300 && driveRes.statusCode < 400 && driveRes.headers.location) {
+        // 302 redirect → follow with http
         const redirectUrl = new URL(driveRes.headers.location);
         const redirectReq = http.request({
           hostname: redirectUrl.hostname,
@@ -88,7 +89,8 @@ function streamGdriveFile(fileId, res) {
       driveRes.on('end', resolve);
     });
     req.on('error', (e) => {
-      if (!res.headersSent) { res.writeHead(502); res.end('Proxy error'); }
+      res.writeHead(502);
+      res.end('Proxy error');
       resolve();
     });
     req.end();
@@ -107,7 +109,7 @@ async function fetchFiles() {
 
 // ── 建構 RSS XML ─────────────────────────────
 function buildRSS(files) {
-  const items = files.map((f) => {
+  const items = files.map((f, i) => {
     const pubDate = new Date(f.createdTime).toUTCString();
     return `
     <item>
@@ -149,6 +151,7 @@ function buildRSS(files) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
 
+  // CORS 預檢請求
   if (req.method === 'OPTIONS') {
     res.writeHead(204, {
       'Access-Control-Allow-Origin': '*',
@@ -160,23 +163,31 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // 設定 CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Range');
 
+  // 靜態檔案 /health
   if (url.pathname === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ status: 'ok', time: new Date().toISOString() }));
     return;
   }
 
+  // RSS Feed
   if (url.pathname === '/feed.xml' || url.pathname === '/') {
     try {
       console.log('[RSS] Fetching files from Google Drive...');
       const files = await fetchFiles();
       console.log(`[RSS] Found ${files.length} files`);
-      if (files.length > 0) console.log(`[RSS] Latest: ${files[0].name}`);
+      if (files.length > 0) {
+        console.log(`[RSS] Latest: ${files[0].name} (${files[0].size} bytes)`);
+      }
       const xml = buildRSS(files);
-      res.writeHead(200, { 'Content-Type': 'application/rss+xml; charset=utf-8', 'Cache-Control': 'public, max-age=300' });
+      res.writeHead(200, {
+        'Content-Type': 'application/rss+xml; charset=utf-8',
+        'Cache-Control': 'public, max-age=300',
+      });
       res.end(xml);
     } catch (err) {
       console.error('[RSS] Error:', err.message);
@@ -186,24 +197,35 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // 音訊代理
   const audioMatch = req.url.match(/\/audio\/([a-zA-Z0-9_-]+)/);
   if (audioMatch) {
+    const fileId = audioMatch[1];
+    console.log(`[AUDIO] Streaming: ${fileId}`);
     try {
-      await streamGdriveFile(audioMatch[1], res);
+      await streamGdriveFile(fileId, res);
     } catch (err) {
       console.error(`[AUDIO] Error: ${err.message}`);
-      if (!res.headersSent) { res.writeHead(502); res.end('Audio proxy error'); }
+      if (!res.headersSent) {
+        res.writeHead(502);
+        res.end('Audio proxy error');
+      }
     }
     return;
   }
 
+  // 404
   res.writeHead(404);
   res.end('Not found');
 });
 
 server.listen(PORT, () => {
   console.log(`🎙  MCH Swallow RSS Server started`);
-  console.log(`   PORT: ${PORT} | GOOGLE_API_KEY: ${GOOGLE_API_KEY.slice(0,10)}...`);
+  console.log(`   PORT: ${PORT}`);
+  console.log(`   GOOGLE_API_KEY: ${GOOGLE_API_KEY.slice(0,10)}...`);
+  console.log(`   PODCAST_FOLDER_ID: ${PODCAST_FOLDER_ID}`);
   console.log(`   SITE_URL: ${SITE_URL}`);
-  if (GOOGLE_API_KEY === 'YOUR_GOOGLE_API_KEY') console.log('\n⚠️  請在 Zeabur 設定 GOOGLE_API_KEY！\n');
+  if (GOOGLE_API_KEY === 'YOUR_GOOGLE_API_KEY') {
+    console.log('\n⚠️  請在 Zeabur 設定 GOOGLE_API_KEY 環境變數！\n');
+  }
 });
