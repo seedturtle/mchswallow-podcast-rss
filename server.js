@@ -10,6 +10,7 @@ const MATON_API_KEY = process.env.MATON_API_KEY || "";
 const MATON_CONNECTION_ID = process.env.MATON_CONN || process.env.MATON_CONNECTION_ID || "aa84aef8-287a-4271-a4b7-26a67b0c6adf";
 const PODCAST_TITLE = process.env.PODCAST_TITLE || "MCH Swallow 吞嚥 Podcast";
 const PODCAST_DESCRIPTION = process.env.PODCAST_DESCRIPTION || "吞嚥復健、肌能訓練與臨床經驗分享";
+const PODCAST_AUTHOR = process.env.PODCAST_AUTHOR || "MCH 吞嚥團隊";
 const PODCAST_EMAIL = process.env.PODCAST_EMAIL || "mchswallow@gmail.com";
 const PODCAST_COVER_URL = process.env.PODCAST_COVER_URL || "https://seedturtle.zo.space/images/mch-podcast-cover.png";
 
@@ -81,7 +82,6 @@ function buildRSS(files) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0"
   xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
-  xmlns:podcast="https://podcastindex.org/namespace/1.0"
   xmlns:atom="http://www.w3.org/2005/Atom"
   xml:lang="zh-TW">
   <channel>
@@ -90,12 +90,15 @@ function buildRSS(files) {
     <atom:link href="${base}/feed.xml" rel="self" type="application/rss+xml" />
     <description><![CDATA[${PODCAST_DESCRIPTION}]]></description>
     <language>zh-TW</language>
-    <itunes:author>${PODCAST_EMAIL}</itunes:author>
-    <itunes:email>${PODCAST_EMAIL}</itunes:email>
+    <itunes:author>${PODCAST_AUTHOR}</itunes:author>
     <itunes:summary><![CDATA[${PODCAST_DESCRIPTION}]]></itunes:summary>
+    <itunes:explicit>false</itunes:explicit>
     <itunes:image href="${PODCAST_COVER_URL}" />
     <itunes:category text="Health &amp; Fitness" />
-    <itunes:category text="Medicine" />
+    <itunes:owner>
+      <itunes:name>${PODCAST_AUTHOR}</itunes:name>
+      <itunes:email>${PODCAST_EMAIL}</itunes:email>
+    </itunes:owner>
 ${items}
   </channel>
 </rss>`;
