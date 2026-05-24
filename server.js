@@ -31,7 +31,7 @@ const PODCAST_DESCRIPTION =
 const PODCAST_AUTHOR = process.env.PODCAST_AUTHOR || "MCH 吞嚥團隊";
 const PODCAST_LANGUAGE = process.env.PODCAST_LANGUAGE || "zh-tw";
 const PODCAST_COVER_URL =
-  process.env.PODCAST_COVER_URL || "";
+  process.env.PODCAST_COVER_URL || "https://seedturtle.zo.space/images/mch-podcast-cover.png";
 const PODCAST_CATEGORY = process.env.PODCAST_CATEGORY || "Health";
 const PODCAST_SUBCATEGORY = process.env.PODCAST_SUBCATEGORY || "Medical";
 
@@ -169,7 +169,7 @@ function buildRss(files) {
     </itunes:category>
     <itunes:owner>
       <itunes:name>${PODCAST_AUTHOR}</itunes:name>
-      <itunes:email>${process.env.PODCAST_EMAIL || "podcast@example.com"}</itunes:email>
+      <itunes:email>${process.env.PODCAST_EMAIL || "mchswallow@gmail.com"}</itunes:email>
     </itunes:owner>`;
 
   files.forEach((file, index) => {
