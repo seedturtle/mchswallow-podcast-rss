@@ -163,6 +163,31 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Debug — 直接回傳 Maton API 的原始回應
+  if (pathname === "/debug") {
+    try {
+      const files = await getAudioFiles();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        hasApiKey: !!MATON_API_KEY,
+        connId: MATON_CONNECTION_ID,
+        folderId: PODCAST_FOLDER_ID,
+        fileCount: files.length,
+        files: files.map(f => ({ id: f.id, name: f.name, size: f.size, created: f.createdTime })),
+        env: {
+          MATON_CONN: !!process.env.MATON_CONN,
+          MATON_CONNECTION_ID: !!process.env.MATON_CONNECTION_ID,
+          MATON_API_KEY: !!process.env.MATON_API_KEY,
+          PODCAST_FOLDER_ID: !!process.env.PODCAST_FOLDER_ID,
+        }
+      }, null, 2));
+    } catch (e) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
   res.writeHead(404, { "Content-Type": "text/plain" });
   res.end("Not found");
 });
