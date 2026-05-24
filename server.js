@@ -133,7 +133,7 @@ function buildRSS(files) {
     <title>${PODCAST_TITLE}</title>
     <link>${base}/</link>
     <description><![CDATA[${PODCAST_DESCRIPTION}]]></description>
-    <language>zh-tw</language>
+    <language>zh</language>
     <copyright>Copyright ${new Date().getFullYear()} ${PODCAST_AUTHOR}</copyright>
     <lastBuildDate>${now}</lastBuildDate>
     <image>
@@ -305,18 +305,45 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 封面圖片
+  // 封面圖片（支援 byte-range）
   if (pathname === "/cover.png") {
     const coverPath = path.join(__dirname, "public", "cover.png");
     if (fs.existsSync(coverPath)) {
       const coverData = fs.readFileSync(coverPath);
-      res.writeHead(200, {
+      const totalSize = coverData.length;
+      const isHead = req.method === "HEAD";
+      const rangeHeader = req.headers["range"];
+
+      const baseHeaders = {
         "Content-Type": "image/png",
-        "Content-Length": coverData.length,
-        "Cache-Control": "public, max-age=86400",
         "Accept-Ranges": "bytes",
-      });
-      if (req.method === "HEAD") { res.end(); return; }
+        "Access-Control-Allow-Origin": "*",
+        "Cache-Control": "public, max-age=86400",
+      };
+
+      if (rangeHeader) {
+        const parts = rangeHeader.replace(/bytes=\s*/i, "").split("-");
+        const start = parseInt(parts[0], 10);
+        const end = parts[1] ? parseInt(parts[1], 10) : totalSize - 1;
+        const chunkSize = Math.min(end - start + 1, totalSize - start);
+        if (start >= totalSize || start < 0) {
+          res.writeHead(416, { "Content-Range": `bytes */${totalSize}` });
+          res.end();
+          return;
+        }
+        const chunk = coverData.slice(start, start + chunkSize);
+        res.writeHead(206, {
+          ...baseHeaders,
+          "Content-Range": `bytes ${start}-${start + chunkSize - 1}/${totalSize}`,
+          "Content-Length": chunkSize,
+        });
+        if (isHead) { res.end(); return; }
+        res.end(chunk);
+        return;
+      }
+
+      res.writeHead(200, { ...baseHeaders, "Content-Length": totalSize });
+      if (isHead) { res.end(); return; }
       res.end(coverData);
     } else {
       res.writeHead(404, { "Content-Type": "text/plain" });
