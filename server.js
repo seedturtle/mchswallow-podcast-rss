@@ -1,207 +1,136 @@
 /**
- * MCH Swallow 吞嚥 Podcast RSS Feed Server
- * 使用 Google Drive + Maton API 自動生成 Podcast RSS
- * 佈署到 Zeabur
+ * MCH Swallow 吞嚥 Podcast RSS Feed 伺服器（生產版）
+ * 特色：
+ *   - 自動從 Google Drive 讀取 MP3，生成 Apple Podcast 相容 RSS
+ *   - 音訊透過 Maton API 串流（繞過 Google Drive 權限限制）
+ *   - 支援 HEAD 請求（Apple Podcasts 必備）
+ *   - CORS 完整支援
  */
 
 const http = require("http");
 const https = require("https");
+const { URL } = require("url");
 
+// ── 必填設定（Zeabur 環境變數）────────────────────────
 const PORT = process.env.PORT || 3000;
-
-// ── Google Drive 設定 ──────────────────────────────────
-// 請在 Zeabur 後台設定以下環境變數：
-const PODCAST_FOLDER_ID =
-  process.env.PODCAST_FOLDER_ID || "1Yiwx-jIqmw37TvbMl5dDbVPcgetEPzIW";
-const MATON_API_KEY =
-  process.env.MATON_API_KEY || "";
-const MATON_CONN =
-  process.env.MATON_CONN || "";
-const MATON_BASE = "https://gateway.maton.ai";
-
-const SITE_URL =
-  process.env.SITE_URL || "https://mchswallowpodcast.zeabur.app";
-
-// ── Podcast 設定（可透過環境變數覆蓋）────────────────────
-const PODCAST_TITLE =
-  process.env.PODCAST_TITLE || "MCH Swallow 吞嚥 Podcast";
+const SITE_URL = process.env.SITE_URL || "https://your-app.zeabur.app";
+const PODCAST_FOLDER_ID = process.env.PODCAST_FOLDER_ID || "YOUR_FOLDER_ID";
+const PODCAST_TITLE = process.env.PODCAST_TITLE || "MCH Swallow 吞嚥 Podcast";
 const PODCAST_DESCRIPTION =
   process.env.PODCAST_DESCRIPTION ||
-  "MCH Swallow 吞嚥 Podcast — 吞嚥復健、肌能訓練與臨床新知，陪伴吞嚥治療師與個案一起進步。";
-const PODCAST_AUTHOR = process.env.PODCAST_AUTHOR || "MCH 吞嚥團隊";
-const PODCAST_LANGUAGE = process.env.PODCAST_LANGUAGE || "zh-tw";
-const PODCAST_COVER_URL =
-  process.env.PODCAST_COVER_URL || "https://seedturtle.zo.space/images/mch-podcast-cover-v2.png";
-const PODCAST_CATEGORY = process.env.PODCAST_CATEGORY || "Health";
-const PODCAST_SUBCATEGORY = process.env.PODCAST_SUBCATEGORY || "Medical";
+  "MCH 吞嚥復健 Podcast — 吞嚥障礙最新醫學新知、肌能訓練與臨床實務，陪伴語言治療師與個案一起進步。";
+const PODCAST_AUTHOR = process.env.PODCAST_AUTHOR || "MCH Swallow 吞嚥團隊";
+const PODCAST_EMAIL = process.env.PODCAST_EMAIL || "mchswallow@gmail.com";
+const PODCAST_CATEGORY = process.env.PODCAST_CATEGORY || "Health & Fitness";
+const PODCAST_IMAGE =
+  process.env.PODCAST_IMAGE ||
+  "https://seedturtle.zo.space/images/mch-podcast-cover.png";
 
-const FALLBACK_RSS = `<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
-  <channel>
-    <title>${PODCAST_TITLE}</title>
-    <description>Podcast 正在恢復中...</description>
-    <language>${PODCAST_LANGUAGE}</language>
-    <itunes:explicit>false</itunes:explicit>
-  </channel>
-</rss>`;
+// Maton API（Maton Connection ID）
+const MATON_CONN = process.env.MATON_CONN || "";
+const MATON_API_KEY = process.env.MATON_API_KEY || "";
 
-// ── Helper: HTTPS GET ─────────────────────────────────
-function httpsGet(hostname, pathname, search) {
+// ── Google Drive API ────────────────────────────────
+const GDRIVE_BASE = "https://www.googleapis.com/drive/v3";
+const GDRIVE_FILES_API = `${GDRIVE_BASE}/files`;
+
+// ── 取得 Podcast 檔案列表 ───────────────────────────
+function getPodcastFiles() {
   return new Promise((resolve, reject) => {
-    const fullUrl = new URL(`https://${hostname}${pathname}${search}`);
-    const options = {
-      hostname: fullUrl.hostname,
-      path: fullUrl.pathname + fullUrl.search,
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${MATON_API_KEY}`,
-        "Maton-Connection": MATON_CONN,
-        "Content-Type": "application/json",
-      },
-    };
-    const req = https.request(options, (res) => {
-      let data = "";
-      res.on("data", (c) => (data += c));
-      res.on("end", () => {
-        try {
-          resolve(JSON.parse(data));
-        } catch {
-          reject(new Error("JSON parse error: " + data.slice(0, 80)));
-        }
-      });
+    const params = new URLSearchParams({
+      q: `'${PODCAST_FOLDER_ID}' in parents and mimeType='audio/mpeg' and trashed=false`,
+      fields:
+        "files(id,name,mimeType,createdTime,modifiedTime,size)",
+      orderBy: "createdTime desc",
+      pageSize: "50",
     });
-    req.on("error", reject);
-    req.end();
+
+    const url = new URL(`${GDRIVE_FILES_API}?${params}`);
+    https.get(
+      {
+        hostname: url.hostname,
+        path: url.pathname + url.search,
+        headers: { accept: "application/json" },
+      },
+      (res) => {
+        let body = "";
+        res.on("data", (c) => (body += c));
+        res.on("end", () => {
+          try {
+            const data = JSON.parse(body);
+            if (data.error) {
+              reject(new Error(data.error.message));
+              return;
+            }
+            resolve(data.files || []);
+          } catch (e) {
+            reject(new Error("Failed to parse Drive API response: " + e.message));
+          }
+        });
+      }
+    ).on("error", reject);
   });
 }
 
-// ── 從 Google Drive 取得音檔清單 ─────────────────────
-async function getPodcastFiles() {
-  const fullUrl = new URL(MATON_BASE + "/google-drive/drive/v3/files");
-  fullUrl.searchParams.set(
-    "fields",
-    "files(id,name,mimeType,createdTime,size,description)"
-  );
-  fullUrl.searchParams.set(
-    "q",
-    `mimeType='audio/mpeg' and '${PODCAST_FOLDER_ID}' in parents and trashed=false`
-  );
-  fullUrl.searchParams.set("orderBy", "createdTime asc");
-  fullUrl.searchParams.set("pageSize", 50);
-
-  const parsed = new URL(fullUrl.toString());
-  const result = await httpsGet(parsed.hostname, parsed.pathname, parsed.search);
-  const files = result.files || [];
-  console.log(`[RSS] Fetched ${files.length} files from Google Drive`);
-  // 反轉：最新集數在最上面
-  return files.reverse();
-}
-
-// ── 從檔名解析 metadata ──────────────────────────────
-function parseEpisodeMetadata(file, index, totalFiles) {
-  const episodeNum = totalFiles - index;
-  // 支援多種檔名格式：YYYYMMDD、EP編號等
-  const dateMatch = file.name.match(/(\d{4})[_-]?(\d{2})[_-]?(\d{2})/);
-  const epMatch = file.name.match(/[Ee][Pp]\s*(\d+)/);
-
-  let title;
-  if (dateMatch) {
-    const [, y, m, d] = dateMatch;
-    title = `第${episodeNum}集｜${y}/${m}/${d}`;
-  } else if (epMatch) {
-    title = `第${epMatch[1]}集`;
-  } else {
-    // 用檔名去掉副檔名當標題
-    title = file.name.replace(/\.mp3$/i, "");
-  }
-
-  // 從 description 欄位或檔名讀取簡介
-  const description =
-    file.description || `${PODCAST_TITLE}，${title}`;
-
-  const pubDate = file.createdTime
-    ? new Date(file.createdTime).toUTCString()
-    : new Date().toUTCString();
-  const size = parseInt(file.size || 0);
-  const audioUrl = `${SITE_URL}/audio/${file.id}.mp3`;
-  const duration = Math.floor(size / 16000); // 粗略估算
-
-  return { title, description, pubDate, size, audioUrl, duration, episodeNum };
-}
-
-// ── 建構 RSS XML ─────────────────────────────────────
+// ── 建立 RSS XML ────────────────────────────────────
 function buildRss(files) {
-  const now = new Date().toUTCString();
-  const coverUrl = PODCAST_COVER_URL;
+  const items = files
+    .map((f, i) => {
+      const fileId = f.id;
+      const audioUrl = `${SITE_URL}/audio/${fileId}`;
+      const pubDate = new Date(f.createdTime).toUTCString();
+      const duration = Math.round((f.size || 300000) / 16000);
+      const size = parseInt(f.size || 0, 10);
 
-  let xml = `<?xml version="1.0" encoding="UTF-8"?>
+      return `
+    <item>
+      <title>${f.name.replace(/\.mp3$/i, "")}</title>
+      <description>MCH 吞嚥 Podcast 第 ${files.length - i} 集</description>
+      <pubDate>${pubDate}</pubDate>
+      <enclosure url="${audioUrl}" type="audio/mpeg" length="${size}" />
+      <itunes:duration>${duration}</itunes:duration>
+      <guid isPermaLink="false">${fileId}</guid>
+      <itunes:episodeType>full</itunes:episodeType>
+    </item>`;
+    })
+    .join("\n");
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0"
   xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
   xmlns:atom="http://www.w3.org/2005/Atom"
-  xmlns:googleplay="http://www.google.com/schemas/play-podcasts/1.0">
+  xmlns:content="http://purl.org/rss/1.0/modules/content/">
   <channel>
     <title>${PODCAST_TITLE}</title>
-    <link>${SITE_URL}/</link>
-    <description><![CDATA[${PODCAST_DESCRIPTION}]]></description>
-    <language>${PODCAST_LANGUAGE}</language>
-    <copyright>Copyright ${new Date().getFullYear()} ${PODCAST_AUTHOR}</copyright>
-    <lastBuildDate>${now}</lastBuildDate>
-    <ttl>60</ttl>
-    <atom:link href="${SITE_URL}/feed.xml" rel="self" type="application/rss+xml"/>`;
-
-  if (coverUrl) {
-    xml += `
-    <image>
-      <url>${coverUrl}</url>
-      <title>${PODCAST_TITLE}</title>
-      <link>${SITE_URL}/</link>
-    </image>
-    <itunes:image href="${coverUrl}"/>`;
-  }
-
-  xml += `
+    <link>${SITE_URL}</link>
+    <language>zh-TW</language>
+    <copyright>© ${new Date().getFullYear()} ${PODCAST_AUTHOR}</copyright>
     <itunes:author>${PODCAST_AUTHOR}</itunes:author>
-    <itunes:subtitle>${PODCAST_TITLE}</itunes:subtitle>
-    <itunes:summary><![CDATA[${PODCAST_DESCRIPTION}]]></itunes:summary>
-    <itunes:explicit>false</itunes:explicit>
-    <itunes:category text="${PODCAST_CATEGORY}">
-      <itunes:category text="${PODCAST_SUBCATEGORY}"/>
-    </itunes:category>
+    <itunes:summary>${PODCAST_DESCRIPTION}</itunes:summary>
+    <description>${PODCAST_DESCRIPTION}</description>
     <itunes:owner>
       <itunes:name>${PODCAST_AUTHOR}</itunes:name>
-      <itunes:email>${process.env.PODCAST_EMAIL || "mchswallow@gmail.com"}</itunes:email>
-    </itunes:owner>`;
-
-  files.forEach((file, index) => {
-    const totalFiles = files.length;
-    const meta = parseEpisodeMetadata(file, index, totalFiles);
-    xml += `
-    <item>
-      <title><![CDATA[${meta.title}]]></title>
-      <link>${SITE_URL}/</link>
-      <description><![CDATA[${meta.description}]]></description>
-      <itunes:summary><![CDATA[${meta.description}]]></itunes:summary>
-      <pubDate>${meta.pubDate}</pubDate>
-      <enclosure url="${meta.audioUrl}" type="audio/mpeg" length="${meta.size}"/>
-      <guid isPermaLink="false">mchswallow_ep${meta.episodeNum}_${file.id}</guid>
-      <itunes:title>${meta.title}</itunes:title>
-      <itunes:episode>${meta.episodeNum}</itunes:episode>
-      <itunes:duration>${meta.duration}</itunes:duration>
-      <itunes:explicit>false</itunes:explicit>
-    </item>`;
-  });
-
-  xml += `
+      <itunes:email>${PODCAST_EMAIL}</itunes:email>
+    </itunes:owner>
+    <itunes:explicit>false</itunes:explicit>
+    <itunes:category text="${PODCAST_CATEGORY}" />
+    <itunes:image href="${PODCAST_IMAGE}" />
+    <image>
+      <url>${PODCAST_IMAGE}</url>
+      <title>${PODCAST_TITLE}</title>
+      <link>${SITE_URL}</link>
+    </image>
+    <atom:link href="${SITE_URL}/feed.xml" rel="self" type="application/rss+xml"/>
+${items}
   </channel>
 </rss>`;
-  return xml;
 }
 
-// ── HTTP 伺服器 ──────────────────────────────────────
+// ── HTTP 伺服器 ─────────────────────────────────────
 const server = http.createServer(async (req, res) => {
-  // CORS headers（讓任何 Podcast app 都能存取）
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Range");
 
   if (req.method === "OPTIONS") {
     res.writeHead(204);
@@ -216,37 +145,48 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // RSS Feed
+  // RSS Feed（支援 GET 和 HEAD）
   if (req.url === "/feed.xml" || req.url === "/") {
     try {
       const files = await getPodcastFiles();
-      console.log(`[RSS] Building feed with ${files.length} episodes`);
-      if (files.length > 0) {
-        console.log(`[RSS] Latest: ${files[0].name}`);
-        console.log(`[RSS] Oldest: ${files[files.length - 1].name}`);
-      }
       const xml = buildRss(files);
+      const xmlBuf = Buffer.from(xml, "utf8");
       res.writeHead(200, {
         "Content-Type": "application/rss+xml; charset=utf-8",
+        "Content-Length": xmlBuf.byteLength,
         "Cache-Control": "public, max-age=300",
       });
-      res.end(xml);
+      if (req.method === "HEAD") {
+        res.end();
+      } else {
+        res.end(xml);
+      }
     } catch (err) {
       console.error("[RSS] Error:", err.message);
-      res.writeHead(200, { "Content-Type": "application/rss+xml; charset=utf-8" });
-      res.end(FALLBACK_RSS);
+      res.writeHead(500, { "Content-Type": "text/plain" });
+      res.end("RSS Error: " + err.message);
     }
+    return;
   }
 
-  // 音頻代理：透過 Maton API proxy 串流 Google Drive 音訊（Apple Podcast 相容）
+  // 音訊代理：透過 Maton API 串流
   const audioMatch = req.url.match(/^\/audio\/([a-zA-Z0-9_-]+)\.mp3$/);
   if (audioMatch) {
     const fileId = audioMatch[1];
     const isHead = req.method === "HEAD";
-    console.log(`[AUDIO] Proxying ${fileId} via Maton API`);
 
-    const matonUrl = new URL(`https://gateway.maton.ai/google-drive/drive/v3/files/${fileId}?alt=media&acknowledgeAbuse=true`);
-    https.get(
+    if (!MATON_API_KEY || !MATON_CONN) {
+      console.error("[AUDIO] Missing MATON_API_KEY or MATON_CONN");
+      res.writeHead(503);
+      res.end("Maton API not configured");
+      return;
+    }
+
+    const matonUrl = new URL(
+      `https://gateway.maton.ai/google-drive/drive/v3/files/${fileId}?alt=media&acknowledgeAbuse=true`
+    );
+
+    const proxyReq = https.get(
       {
         hostname: matonUrl.hostname,
         path: matonUrl.pathname + matonUrl.search,
@@ -257,25 +197,31 @@ const server = http.createServer(async (req, res) => {
       },
       (driveRes) => {
         if (driveRes.statusCode === 200) {
+          const contentLen = driveRes.headers["content-length"] || "";
           res.writeHead(200, {
             "Content-Type": "audio/mpeg",
-            "Content-Length": driveRes.headers["content-length"] || "",
+            "Content-Length": contentLen,
             "Accept-Ranges": "bytes",
             "Cache-Control": "public, max-age=86400",
           });
-          driveRes.pipe(res);
+          if (isHead) {
+            driveRes.destroy();
+            res.end();
+          } else {
+            driveRes.pipe(res);
+          }
         } else {
-          console.error(`[AUDIO] Maton API returned ${driveRes.statusCode}`);
           let body = "";
           driveRes.on("data", (c) => (body += c));
           driveRes.on("end", () => {
-            console.error(`  Response: ${body.slice(0, 200)}`);
+            console.error(`[AUDIO] Maton ${driveRes.statusCode}: ${body.slice(0, 200)}`);
             res.writeHead(502);
             res.end("Audio proxy error");
           });
         }
       }
-    ).on("error", (err) => {
+    );
+    proxyReq.on("error", (err) => {
       console.error(`[AUDIO] Error: ${err.message}`);
       res.writeHead(502);
       res.end("Audio proxy error");
@@ -293,13 +239,11 @@ server.listen(PORT, () => {
   console.log(`🔑  Health:   ${SITE_URL}/health`);
   console.log(`📂  Folder:   ${PODCAST_FOLDER_ID}`);
   console.log(`\n➡️  請在 Zeabur 後台設定以下環境變數：`);
-  console.log(`   PODCAST_FOLDER_ID    — Google Drive 資料夾 ID`);
-  console.log(`   MATON_API_KEY       — Maton Gateway API Key`);
-  console.log(`   MATON_CONN          — Maton Connection ID`);
-  console.log(`   SITE_URL            — 你的 Zeabur 網址（如 https://xxx.zeabur.app）`);
-  console.log(`   PODCAST_TITLE       — [選填] Podcast 標題`);
-  console.log(`   PODCAST_DESCRIPTION — [選填] Podcast 描述`);
-  console.log(`   PODCAST_AUTHOR      — [選填] 作者名稱`);
-  console.log(`   PODCAST_COVER_URL   — [選填] 封面圖片網址`);
+  console.log(`   SITE_URL              — 你的 Zeabur 網址（例：https://mchswallowpodcast.zeabur.app）`);
+  console.log(`   PODCAST_FOLDER_ID     — Google Drive 資料夾 ID`);
+  console.log(`   MATON_API_KEY         — Maton API Key`);
+  console.log(`   MATON_CONN            — Maton Connection ID`);
+  if (!MATON_API_KEY) console.warn(`   ⚠️  缺少 MATON_API_KEY，音訊將無法串流！`);
+  if (!MATON_CONN) console.warn(`   ⚠️  缺少 MATON_CONN，音訊將無法串流！`);
+  if (!PODCAST_IMAGE) console.warn(`   ⚠️  缺少 PODCAST_IMAGE，Apple Podcast 封面可能無法顯示！`);
 });
-
