@@ -106,6 +106,7 @@ function buildRSS(files) {
       <guid isPermaLink="false">mchswallow_ep${meta.episodeNum}_${file.id}</guid>
       <itunes:title>${meta.title}</itunes:title>
       <itunes:episode>${meta.episodeNum}</itunes:episode>
+      <itunes:episodeType>full</itunes:episodeType>
       <itunes:duration>${meta.duration}</itunes:duration>
       <itunes:explicit>false</itunes:explicit>
     </item>`;
@@ -115,7 +116,8 @@ function buildRSS(files) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0"
   xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
-  xmlns:atom="http://www.w3.org/2005/Atom">
+  xmlns:atom="http://www.w3.org/2005/Atom"
+  xmlns:content="http://purl.org/rss/1.0/modules/content/">
   <channel>
     <title>${PODCAST_TITLE}</title>
     <link>${base}/</link>
@@ -131,6 +133,7 @@ function buildRSS(files) {
     <itunes:author>${PODCAST_AUTHOR}</itunes:author>
     <itunes:subtitle>${PODCAST_TITLE}</itunes:subtitle>
     <itunes:summary><![CDATA[${PODCAST_DESCRIPTION}]]></itunes:summary>
+    <itunes:type>episodic</itunes:type>
     <itunes:explicit>false</itunes:explicit>
     <itunes:image href="${PODCAST_COVER_URL}"/>
     <itunes:category text="Science"/>
