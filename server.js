@@ -1,231 +1,176 @@
-/**
- * MCH Swallow 吞嚥 Podcast RSS Feed 伺服器（Google API 直接版）
- * 使用 Google Drive API v3 直接串流音訊，繞過下載限制
- */
+const http = require("http");
+const https = require("https");
+const { URL } = require("url");
 
-const http = require('http');
-const https = require('https');
-const { URL } = require('url');
+const PORT = parseInt(process.env.PORT || "3000", 10);
+const SITE_URL = process.env.SITE_URL || "https://mchswallowpodcast.zeabur.app";
+const PODCAST_FOLDER_ID = process.env.PODCAST_FOLDER_ID || "1Yiwx-jIqmw37TvbMl5dDbVPcgetEPzIW";
+const MATON_API_KEY = process.env.MATON_API_KEY || "";
+const MATON_CONNECTION_ID = process.env.MATON_CONNECTION_ID || "seedturtle-zo";
+const PODCAST_TITLE = process.env.PODCAST_TITLE || "MCH Swallow 吞嚥 Podcast";
+const PODCAST_DESCRIPTION = process.env.PODCAST_DESCRIPTION || "吞嚥復健、肌能訓練與臨床經驗分享";
+const PODCAST_EMAIL = process.env.PODCAST_EMAIL || "mchswallow@gmail.com";
+const PODCAST_COVER_URL = process.env.PODCAST_COVER_URL || "https://seedturtle.zo.space/images/mch-podcast-cover.png";
 
-// ── 環境變數 ───────────────────────────────
-const PORT = parseInt(process.env.PORT || '3000');
-const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY || 'YOUR_GOOGLE_API_KEY';
-const PODCAST_FOLDER_ID = process.env.PODCAST_FOLDER_ID || 'YOUR_FOLDER_ID';
-
-// ── Google API 端點 ───────────────────────────
-const GDRIVE_BASE = 'www.googleapis.com';
-const GDRIVE_LIST_URL = `/drive/v3/files?q='${PODCAST_FOLDER_ID}'+in+parents+and+mimeType='audio/mpeg'+and+trashed=false&fields=files(id,name,mimeType,size,createdTime,modifiedTime)&orderBy=createdTime desc`;
-const GDRIVE_DOWNLOAD_BASE = 'www.googleapis.com/drive/v3/files';
-
-// ── Podcast 基本資訊 ─────────────────────────
-const PODCAST_TITLE = process.env.PODCAST_TITLE || 'MCH Swallow 吞嚥 Podcast';
-const PODCAST_DESCRIPTION = process.env.PODCAST_DESCRIPTION || '由 MCH 吞嚥團隊分享吞嚥復健與肌能訓練的最新知識與臨床經驗，陪伴每一位在偏鄉努力守護病人吞嚥功能的醫療人員。';
-const SITE_URL = process.env.SITE_URL || 'https://mchswallowpodcast.zeabur.app';
-const PODCAST_COVER_URL = process.env.PODCAST_COVER_URL || `${SITE_URL}/cover.png`;
-const PODCAST_EMAIL = process.env.PODCAST_EMAIL || 'mchswallow@gmail.com';
-
-// ── 輔助函數：建立 Google API 請求 ────────────
-function gdriveRequest(path, method = 'GET', postData = null) {
+function matonFetch(path, opts = {}) {
   return new Promise((resolve, reject) => {
-    const urlObj = new URL(`https://${GDRIVE_BASE}${path}`);
-    const options = {
-      hostname: GDRIVE_BASE,
-      path: urlObj.pathname + urlObj.search,
-      method,
-      headers: {
-        'Authorization': `Bearer ${GOOGLE_API_KEY}`,
-        'Accept': 'application/json',
-      },
+    const fullUrl = path.startsWith("http") ? path : `https://gateway.maton.ai${path}`;
+    const parsed = new URL(fullUrl);
+    const headers = {
+      Authorization: `Bearer ${MATON_API_KEY}`,
+      "x-maton-connection": MATON_CONNECTION_ID,
+      ...(opts.headers || {}),
     };
-    if (postData) {
-      options.headers['Content-Type'] = 'application/json';
-    }
+    const options = {
+      hostname: parsed.hostname,
+      port: 443,
+      path: parsed.pathname + parsed.search,
+      method: opts.method || "GET",
+      headers,
+    };
     const req = https.request(options, (res) => {
-      let data = '';
-      res.on('data', (chunk) => data += chunk);
-      res.on('end', () => {
-        try { resolve({ status: res.statusCode, data: JSON.parse(data) }); }
-        catch { resolve({ status: res.statusCode, data: data }); }
+      const chunks = [];
+      res.on("data", (chunk) => chunks.push(chunk));
+      res.on("end", () => {
+        const body = Buffer.concat(chunks);
+        if (opts.binary || parsed.searchParams.has("alt")) {
+          resolve({ status: res.statusCode, headers: res.headers, body, isBinary: true });
+        } else {
+          try {
+            resolve({ status: res.statusCode, headers: res.headers, body: JSON.parse(body) });
+          } catch {
+            resolve({ status: res.statusCode, headers: res.headers, body, isBinary: true });
+          }
+        }
       });
     });
-    req.on('error', reject);
-    if (postData) req.write(JSON.stringify(postData));
+    req.on("error", reject);
+    if (opts.body) req.write(opts.body);
     req.end();
   });
 }
 
-// ── 輔助函數：串流 Google Drive 檔案 ──────────
-function streamGdriveFile(fileId, res) {
-  return new Promise((resolve, reject) => {
-    const options = {
-      hostname: GDRIVE_BASE,
-      path: `/${GDRIVE_DOWNLOAD_BASE}/${fileId}?alt=media`,
-      method: 'GET',
-      headers: { 'Authorization': `Bearer ${GOOGLE_API_KEY}` },
-    };
-    const req = https.request(options, (driveRes) => {
-      if (driveRes.statusCode >= 300 && driveRes.statusCode < 400 && driveRes.headers.location) {
-        // 302 redirect → follow with http
-        const redirectUrl = new URL(driveRes.headers.location);
-        const redirectReq = http.request({
-          hostname: redirectUrl.hostname,
-          path: redirectUrl.pathname + redirectUrl.search,
-          method: 'GET',
-        }, (r) => {
-          res.writeHead(r.statusCode, r.headers);
-          r.pipe(res, { end: true });
-          r.on('end', resolve);
-        });
-        redirectReq.on('error', reject);
-        redirectReq.end();
-        return;
-      }
-      res.writeHead(driveRes.statusCode, {
-        'Content-Type': driveRes.headers['content-type'] || 'audio/mpeg',
-        'Accept-Ranges': 'bytes',
-        'Cache-Control': 'public, max-age=3600',
-      });
-      driveRes.pipe(res, { end: true });
-      driveRes.on('end', resolve);
-    });
-    req.on('error', (e) => {
-      res.writeHead(502);
-      res.end('Proxy error');
-      resolve();
-    });
-    req.end();
-  });
-}
-
-// ── 抓取 Google Drive 檔案列表 ────────────────
-async function fetchFiles() {
-  const result = await gdriveRequest(GDRIVE_LIST_URL);
-  if (result.status !== 200 || !result.data.files) {
-    console.error('[RSS] Failed to fetch files:', result.status, JSON.stringify(result.data).slice(0, 200));
+async function getAudioFiles() {
+  const folderId = encodeURIComponent(PODCAST_FOLDER_ID);
+  const query = encodeURIComponent(`'${folderId}' in parents and mimeType='audio/mpeg' and trashed=false`);
+  const res = await matonFetch(
+    `/google-drive/drive/v3/files?q=${query}&fields=files(id,name,mimeType,createdTime,size)&orderBy=createdTime desc`
+  );
+  if (res.status !== 200 || !res.body.files) {
+    console.error("[RSS] Error:", res.body.message || JSON.stringify(res.body));
     return [];
   }
-  return result.data.files;
+  return res.body.files;
 }
 
-// ── 建構 RSS XML ─────────────────────────────
 function buildRSS(files) {
-  const items = files.map((f, i) => {
-    const pubDate = new Date(f.createdTime).toUTCString();
-    return `
-    <item>
-      <title>${f.name.replace('.mp3','').replace(/[<>]/g,'')}</title>
-      <description>${PODCAST_DESCRIPTION}</description>
-      <pubDate>${pubDate}</pubDate>
-      <enclosure url="${SITE_URL}/audio/${f.id}" type="audio/mpeg" length="${f.size || 0}" />
+  const base = SITE_URL.replace(/\/$/, "");
+  const items = files
+    .filter((f) => f.name && f.name.endsWith(".mp3"))
+    .map((f) => {
+      const audioUrl = `${base}/audio/${f.id}`;
+      const pubDate = f.createdTime ? new Date(f.createdTime).toUTCString() : new Date().toUTCString();
+      return `    <item>
+      <title>${f.name.replace(/\.mp3$/i, "")}</title>
+      <enclosure url="${audioUrl}" type="audio/mpeg" length="${f.size || 0}" />
       <guid isPermaLink="false">${f.id}</guid>
-      <itunes:duration>${Math.round((f.size || 5000000) / 16000)}</itunes:duration>
-      <itunes:explicit>false</itunes:explicit>
+      <pubDate>${pubDate}</pubDate>
     </item>`;
-  }).join('');
+    })
+    .join("\n");
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0"
   xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
+  xmlns:podcast="https://podcastindex.org/namespace/1.0"
   xmlns:atom="http://www.w3.org/2005/Atom"
-  xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  xml:lang="zh-TW">
   <channel>
     <title>${PODCAST_TITLE}</title>
-    <description>${PODCAST_DESCRIPTION}</description>
-    <itunes:image href="${PODCAST_COVER_URL}" />
-    <itunes:author>MCH Swallow 吞嚥團隊</itunes:author>
-    <itunes:owner>
-      <itunes:name>MCH Swallow 吞嚥團隊</itunes:name>
-      <itunes:email>${PODCAST_EMAIL}</itunes:email>
-    </itunes:owner>
-    <language>zh-TW</language>
     <link>${SITE_URL}</link>
-    <atom:link href="${SITE_URL}/feed.xml" rel="self" type="application/rss+xml" />
+    <atom:link href="${base}/feed.xml" rel="self" type="application/rss+xml" />
+    <description><![CDATA[${PODCAST_DESCRIPTION}]]></description>
+    <language>zh-TW</language>
+    <itunes:author>${PODCAST_EMAIL}</itunes:author>
+    <itunes:email>${PODCAST_EMAIL}</itunes:email>
+    <itunes:summary><![CDATA[${PODCAST_DESCRIPTION}]]></itunes:summary>
+    <itunes:image href="${PODCAST_COVER_URL}" />
     <itunes:category text="Health &amp; Fitness" />
-    <itunes:explicit>false</itunes:explicit>
-    ${items}
+    <itunes:category text="Medicine" />
+${items}
   </channel>
 </rss>`;
 }
 
-// ── HTTP 伺服器 ──────────────────────────────
 const server = http.createServer(async (req, res) => {
-  const url = new URL(req.url, `http://${req.headers.host}`);
+  const parsedUrl = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+  const pathname = parsedUrl.pathname;
 
-  // CORS 預檢請求
-  if (req.method === 'OPTIONS') {
+  if (req.method === "OPTIONS") {
     res.writeHead(204, {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Range',
-      'Access-Control-Max-Age': '86400',
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      Allow: "GET, HEAD, OPTIONS",
     });
     res.end();
     return;
   }
 
-  // 設定 CORS
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Range');
-
-  // 靜態檔案 /health
-  if (url.pathname === '/health') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ status: 'ok', time: new Date().toISOString() }));
-    return;
-  }
-
-  // RSS Feed
-  if (url.pathname === '/feed.xml' || url.pathname === '/') {
+  if (pathname === "/feed.xml" || pathname === "/") {
+    res.writeHead(200, { "Content-Type": "application/rss+xml; charset=utf-8", "Cache-Control": "no-cache" });
     try {
-      console.log('[RSS] Fetching files from Google Drive...');
-      const files = await fetchFiles();
-      console.log(`[RSS] Found ${files.length} files`);
-      if (files.length > 0) {
-        console.log(`[RSS] Latest: ${files[0].name} (${files[0].size} bytes)`);
-      }
-      const xml = buildRSS(files);
-      res.writeHead(200, {
-        'Content-Type': 'application/rss+xml; charset=utf-8',
-        'Cache-Control': 'public, max-age=300',
-      });
-      res.end(xml);
-    } catch (err) {
-      console.error('[RSS] Error:', err.message);
-      res.writeHead(500);
-      res.end('RSS Error');
+      const files = await getAudioFiles();
+      res.end(buildRSS(files));
+    } catch (e) {
+      console.error("[RSS] Error:", e.message);
+      res.writeHead(500, { "Content-Type": "text/plain" });
+      res.end("RSS Error: " + e.message);
     }
     return;
   }
 
-  // 音訊代理
-  const audioMatch = req.url.match(/\/audio\/([a-zA-Z0-9_-]+)/);
+  const audioMatch = pathname.match(/^\/audio\/(.+)/);
   if (audioMatch) {
     const fileId = audioMatch[1];
     console.log(`[AUDIO] Streaming: ${fileId}`);
     try {
-      await streamGdriveFile(fileId, res);
-    } catch (err) {
-      console.error(`[AUDIO] Error: ${err.message}`);
-      if (!res.headersSent) {
-        res.writeHead(502);
-        res.end('Audio proxy error');
+      const apiRes = await matonFetch(`/google-drive/drive/v3/files/${fileId}?alt=media`, { binary: true });
+      if (apiRes.status === 200) {
+        if (apiRes.headers["content-type"]) res.setHeader("Content-Type", apiRes.headers["content-type"]);
+        else res.setHeader("Content-Type", "audio/mpeg");
+        if (apiRes.headers["content-length"]) res.setHeader("Content-Length", apiRes.headers["content-length"]);
+        res.setHeader("Accept-Ranges", "bytes");
+        res.setHeader("Access-Control-Allow-Origin", "*");
+        res.setHeader("Cache-Control", "public, max-age=86400");
+        res.end(apiRes.body);
+      } else {
+        console.error(`[AUDIO] Error ${apiRes.status}:`, apiRes.body.error || apiRes.body.message);
+        res.writeHead(apiRes.status, { "Content-Type": "text/plain" });
+        res.end(apiRes.body.error ? JSON.stringify(apiRes.body) : "Audio not found");
       }
+    } catch (e) {
+      console.error("[AUDIO] Error:", e.message);
+      res.writeHead(502, { "Content-Type": "text/plain" });
+      res.end("Audio proxy error: " + e.message);
     }
     return;
   }
 
-  // 404
-  res.writeHead(404);
-  res.end('Not found');
+  if (pathname === "/health") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ status: "ok", time: new Date().toISOString() }));
+    return;
+  }
+
+  res.writeHead(404, { "Content-Type": "text/plain" });
+  res.end("Not found");
 });
 
 server.listen(PORT, () => {
-  console.log(`🎙  MCH Swallow RSS Server started`);
-  console.log(`   PORT: ${PORT}`);
-  console.log(`   GOOGLE_API_KEY: ${GOOGLE_API_KEY.slice(0,10)}...`);
-  console.log(`   PODCAST_FOLDER_ID: ${PODCAST_FOLDER_ID}`);
-  console.log(`   SITE_URL: ${SITE_URL}`);
-  if (GOOGLE_API_KEY === 'YOUR_GOOGLE_API_KEY') {
-    console.log('\n⚠️  請在 Zeabur 設定 GOOGLE_API_KEY 環境變數！\n');
-  }
+  console.log(`🎙  MCH Swallow RSS 啟動中...`);
+  console.log(`🌐  RSS Feed: ${SITE_URL}/feed.xml`);
+  console.log(`🎵  Audio Proxy: ${SITE_URL}/audio/<file_id>`);
+  console.log(`❤️  Health: ${SITE_URL}/health`);
+  if (!MATON_API_KEY) console.warn("⚠️  MATON_API_KEY 未設定！");
 });
