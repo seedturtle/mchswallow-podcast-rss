@@ -66,17 +66,48 @@ async function getAudioFiles() {
   return res.body.files;
 }
 
+function parseEpisodeMeta(file, index, totalFiles) {
+  const episodeNum = totalFiles - index; // 最新的是第1集
+  const dateMatch = file.name.match(/(\d{4})[_-]?(\d{2})[_-]?(\d{2})/);
+  const epMatch = file.name.match(/[Ee][Pp]\s*(\d+)/);
+
+  let title;
+  if (dateMatch) {
+    const [, y, m, d] = dateMatch;
+    title = `第${episodeNum}集｜${y}/${m}/${d}`;
+  } else if (epMatch) {
+    title = `第${epMatch[1]}集`;
+  } else {
+    title = file.name.replace(/\.mp3$/i, "");
+  }
+
+  const description = `${PODCAST_TITLE}，${title}。${PODCAST_DESCRIPTION}`;
+  const pubDate = file.createdTime ? new Date(file.createdTime).toUTCString() : new Date().toUTCString();
+  const size = parseInt(file.size || 0);
+  const audioUrl = `${SITE_URL.replace(/\/$/, "")}/audio/${file.id}`;
+  const duration = Math.floor(size / 16000); // 粗略估算秒數
+
+  return { title, description, pubDate, size, audioUrl, duration, episodeNum };
+}
+
 function buildRSS(files) {
   const base = SITE_URL.replace(/\/$/, "");
+  const now = new Date().toUTCString();
   const items = files
-    .map((f) => {
-      const audioUrl = `${base}/audio/${f.id}`;
-      const pubDate = f.createdTime ? new Date(f.createdTime).toUTCString() : new Date().toUTCString();
+    .map((file, index) => {
+      const meta = parseEpisodeMeta(file, index, files.length);
       return `    <item>
-      <title>${f.name.replace(/\.mp3$/i, "")}</title>
-      <enclosure url="${audioUrl}" type="audio/mpeg" length="${f.size || 0}" />
-      <guid isPermaLink="false">${f.id}</guid>
-      <pubDate>${pubDate}</pubDate>
+      <title><![CDATA[${meta.title}]]></title>
+      <link>${base}/</link>
+      <description><![CDATA[${meta.description}]]></description>
+      <itunes:summary><![CDATA[${meta.description}]]></itunes:summary>
+      <pubDate>${meta.pubDate}</pubDate>
+      <enclosure url="${meta.audioUrl}" type="audio/mpeg" length="${meta.size}"/>
+      <guid isPermaLink="false">mchswallow_ep${meta.episodeNum}_${file.id}</guid>
+      <itunes:title>${meta.title}</itunes:title>
+      <itunes:episode>${meta.episodeNum}</itunes:episode>
+      <itunes:duration>${meta.duration}</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
     </item>`;
     })
     .join("\n");
@@ -84,25 +115,32 @@ function buildRSS(files) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0"
   xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
-  xmlns:atom="http://www.w3.org/2005/Atom"
-  xmlns:content="http://purl.org/rss/1.0/modules/content/"
-  xml:lang="zh-TW">
+  xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>${PODCAST_TITLE}</title>
-    <link>${SITE_URL}</link>
-    <atom:link href="${base}/feed.xml" rel="self" type="application/rss+xml" />
+    <link>${base}/</link>
     <description><![CDATA[${PODCAST_DESCRIPTION}]]></description>
-    <language>zh-TW</language>
+    <language>zh-tw</language>
+    <copyright>Copyright ${new Date().getFullYear()} ${PODCAST_AUTHOR}</copyright>
+    <lastBuildDate>${now}</lastBuildDate>
+    <image>
+      <url>${PODCAST_COVER_URL}</url>
+      <title>${PODCAST_TITLE}</title>
+      <link>${base}/</link>
+    </image>
     <itunes:author>${PODCAST_AUTHOR}</itunes:author>
+    <itunes:subtitle>${PODCAST_TITLE}</itunes:subtitle>
     <itunes:summary><![CDATA[${PODCAST_DESCRIPTION}]]></itunes:summary>
     <itunes:explicit>false</itunes:explicit>
-    <itunes:image href="${PODCAST_COVER_URL}" />
-    <itunes:category text="Science" />
-    <itunes:category text="Health &amp; Fitness" />
+    <itunes:image href="${PODCAST_COVER_URL}"/>
+    <itunes:category text="Science"/>
+    <itunes:category text="Health &amp; Fitness"/>
     <itunes:owner>
       <itunes:name>${PODCAST_AUTHOR}</itunes:name>
       <itunes:email>${PODCAST_EMAIL}</itunes:email>
     </itunes:owner>
+    <ttl>60</ttl>
+    <atom:link href="${base}/feed.xml" rel="self" type="application/rss+xml"/>
 ${items}
   </channel>
 </rss>`;
