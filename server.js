@@ -127,7 +127,8 @@ function buildRSS(files) {
 <rss version="2.0"
   xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
   xmlns:atom="http://www.w3.org/2005/Atom"
-  xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  xmlns:content="http://purl.org/rss/1.0/modules/content/"
+  xmlns:podcast="https://podcastindex.org/namespace/1.0">
   <channel>
     <title>${PODCAST_TITLE}</title>
     <link>${base}/</link>
@@ -154,6 +155,10 @@ function buildRSS(files) {
     </itunes:owner>
     <ttl>60</ttl>
     <atom:link href="${base}/feed.xml" rel="self" type="application/rss+xml"/>
+    <podcast:locked>no</podcast:locked>
+    <podcast:guid>${PODCAST_AUTHOR.replace(/[^a-z0-9]/gi, "")}-podcast</podcast:guid>
+    <podcast:medium>audio</podcast:medium>
+    <podcast:showOwner>true</podcast:showOwner>
 ${items}
   </channel>
 </rss>`;
