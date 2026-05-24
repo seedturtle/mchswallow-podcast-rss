@@ -223,6 +223,7 @@ const server = http.createServer(async (req, res) => {
     );
     proxyReq.on("error", (err) => {
       console.error(`[AUDIO] Error: ${err.message}`);
+      if (res.headersSent) return;
       res.writeHead(502);
       res.end("Audio proxy error");
     });
