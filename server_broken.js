@@ -236,8 +236,6 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, { "Content-Type": "application/rss+xml; charset=utf-8" });
       res.end(FALLBACK_RSS);
     }
-  }
-
   // 音頻代理：直接從 Google Drive 串流音訊（非 302 導向）
   const audioMatch = req.url.match(/^\/audio\/([a-zA-Z0-9_-]+)\.mp3$/);
   if (audioMatch) {
@@ -297,4 +295,3 @@ server.listen(PORT, () => {
   console.log(`   PODCAST_AUTHOR      — [選填] 作者名稱`);
   console.log(`   PODCAST_COVER_URL   — [選填] 封面圖片網址`);
 });
-
