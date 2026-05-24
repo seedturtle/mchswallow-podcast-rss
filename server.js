@@ -83,6 +83,7 @@ function buildRSS(files) {
 <rss version="2.0"
   xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
   xmlns:atom="http://www.w3.org/2005/Atom"
+  xmlns:content="http://purl.org/rss/1.0/modules/content/"
   xml:lang="zh-TW">
   <channel>
     <title>${PODCAST_TITLE}</title>
@@ -92,7 +93,7 @@ function buildRSS(files) {
     <language>zh-TW</language>
     <itunes:author>${PODCAST_AUTHOR}</itunes:author>
     <itunes:summary><![CDATA[${PODCAST_DESCRIPTION}]]></itunes:summary>
-    <itunes:explicit>false</itunes:explicit>
+    <itunes:explicit>no</itunes:explicit>
     <itunes:image href="${PODCAST_COVER_URL}" />
     <itunes:category text="Health &amp; Fitness" />
     <itunes:owner>
