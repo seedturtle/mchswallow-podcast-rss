@@ -179,7 +179,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (pathname === "/feed.xml" || pathname === "/") {
+  if (pathname === "/feed.xml") {
     res.writeHead(200, { "Content-Type": "application/rss+xml; charset=utf-8", "Cache-Control": "no-cache" });
     try {
       const files = await getAudioFiles();
@@ -200,7 +200,27 @@ const server = http.createServer(async (req, res) => {
     console.log(`[AUDIO] ${isHead ? "HEAD" : "GET"}: ${fileId}${rangeHeader ? " (" + rangeHeader + ")" : ""}`);
 
     try {
-      // 從 Maton 下載完整音檔（~4MB，記憶體可負擔）
+      // HEAD — 只用 Range: bytes=0-0 探測大小，不下載完整檔案
+      if (isHead) {
+        const probeOpts = { binary: true, headers: { Range: "bytes=0-0" } };
+        const probeRes = await matonFetch(`/google-drive/drive/v3/files/${fileId}?alt=media`, probeOpts);
+        let totalSize = 0;
+        if (probeRes.headers["content-range"]) {
+          const match = probeRes.headers["content-range"].match(/\/(\d+)$/);
+          if (match) totalSize = parseInt(match[1], 10);
+        }
+        res.writeHead(200, {
+          "Content-Type": probeRes.headers["content-type"] || "audio/mpeg",
+          "Accept-Ranges": "bytes",
+          "Content-Length": totalSize,
+          "Access-Control-Allow-Origin": "*",
+          "Cache-Control": "public, max-age=86400",
+        });
+        res.end();
+        return;
+      }
+
+      // GET — 從 Maton 下載完整音檔（~4MB，記憶體可負擔）
       const fileRes = await matonFetch(`/google-drive/drive/v3/files/${fileId}?alt=media`, { binary: true });
 
       if (fileRes.status !== 200) {
@@ -219,13 +239,6 @@ const server = http.createServer(async (req, res) => {
         "Access-Control-Allow-Origin": "*",
         "Cache-Control": "public, max-age=86400",
       };
-
-      // HEAD — 只回傳 header，不下載 body
-      if (isHead) {
-        res.writeHead(200, { ...baseHeaders, "Content-Length": totalSize });
-        res.end();
-        return;
-      }
 
       // GET with Range — 本地 slice，回傳 206
       if (rangeHeader) {
@@ -311,6 +324,37 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: e.message }));
     }
+    return;
+  }
+
+  // 首頁 — 簡單的 Podcast 資訊頁
+  if (pathname === "/") {
+    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+    res.end(`<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${PODCAST_TITLE}</title>
+  <link rel="alternate" type="application/rss+xml" title="${PODCAST_TITLE}" href="${SITE_URL}/feed.xml">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 640px; margin: 0 auto; padding: 2rem; text-align: center; background: #fafafa; color: #333; }
+    img { max-width: 300px; border-radius: 12px; box-shadow: 0 4px 24px rgba(0,0,0,0.1); }
+    h1 { font-size: 1.5rem; margin: 1rem 0 0.5rem; }
+    p { color: #666; line-height: 1.6; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .badge { display: inline-block; margin-top: 1rem; padding: 0.5rem 1rem; background: #2563eb; color: #fff; border-radius: 8px; font-size: 0.875rem; }
+  </style>
+</head>
+<body>
+  <img src="/cover.png" alt="${PODCAST_TITLE}">
+  <h1>${PODCAST_TITLE}</h1>
+  <p>${PODCAST_DESCRIPTION}</p>
+  <p>📻 ${PODCAST_AUTHOR}</p>
+  <a class="badge" href="/feed.xml">訂閱 RSS Feed</a>
+</body>
+</html>`);
     return;
   }
 
