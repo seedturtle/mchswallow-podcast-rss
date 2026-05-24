@@ -200,7 +200,7 @@ const server = http.createServer(async (req, res) => {
     console.log(`[AUDIO] ${isHead ? "HEAD" : "GET"}: ${fileId}${rangeHeader ? " (" + rangeHeader + ")" : ""}`);
 
     try {
-      // HEAD — 只用 Range: bytes=0-0 探測大小，不下載完整檔案
+      // HEAD — 只用 probe 探測大小，不下載完整檔案
       if (isHead) {
         const probeOpts = { binary: true, headers: { Range: "bytes=0-0" } };
         const probeRes = await matonFetch(`/google-drive/drive/v3/files/${fileId}?alt=media`, probeOpts);
@@ -209,13 +209,36 @@ const server = http.createServer(async (req, res) => {
           const match = probeRes.headers["content-range"].match(/\/(\d+)$/);
           if (match) totalSize = parseInt(match[1], 10);
         }
-        res.writeHead(200, {
+
+        const headBase = {
           "Content-Type": probeRes.headers["content-type"] || "audio/mpeg",
           "Accept-Ranges": "bytes",
-          "Content-Length": totalSize,
           "Access-Control-Allow-Origin": "*",
           "Cache-Control": "public, max-age=86400",
-        });
+        };
+
+        // HEAD + Range → 206 + Content-Range
+        if (rangeHeader) {
+          const parts = rangeHeader.replace(/bytes=\s*/i, "").split("-");
+          const start = parseInt(parts[0], 10);
+          const end = parts[1] ? parseInt(parts[1], 10) : totalSize - 1;
+          const chunkSize = Math.min(end - start + 1, totalSize - start);
+          if (start >= totalSize || start < 0) {
+            res.writeHead(416, { "Content-Range": `bytes */${totalSize}` });
+            res.end();
+            return;
+          }
+          res.writeHead(206, {
+            ...headBase,
+            "Content-Range": `bytes ${start}-${start + chunkSize - 1}/${totalSize}`,
+            "Content-Length": chunkSize,
+          });
+          res.end();
+          return;
+        }
+
+        // 一般 HEAD (無 Range) → 200
+        res.writeHead(200, { ...headBase, "Content-Length": totalSize });
         res.end();
         return;
       }
