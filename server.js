@@ -31,7 +31,7 @@ const PODCAST_DESCRIPTION =
 const PODCAST_AUTHOR = process.env.PODCAST_AUTHOR || "MCH 吞嚥團隊";
 const PODCAST_LANGUAGE = process.env.PODCAST_LANGUAGE || "zh-tw";
 const PODCAST_COVER_URL =
-  process.env.PODCAST_COVER_URL || "https://seedturtle.zo.space/images/mch-podcast-cover.png";
+  process.env.PODCAST_COVER_URL || "https://seedturtle.zo.space/images/mch-podcast-cover-v2.png";
 const PODCAST_CATEGORY = process.env.PODCAST_CATEGORY || "Health";
 const PODCAST_SUBCATEGORY = process.env.PODCAST_SUBCATEGORY || "Medical";
 
