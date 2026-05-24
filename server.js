@@ -136,17 +136,32 @@ const server = http.createServer(async (req, res) => {
   const audioMatch = pathname.match(/^\/audio\/(.+)/);
   if (audioMatch) {
     const fileId = audioMatch[1];
-    console.log(`[AUDIO] Streaming: ${fileId}`);
+    const isHead = req.method === "HEAD";
+    const rangeHeader = req.headers["range"];
+    console.log(`[AUDIO] ${isHead ? "HEAD" : "GET"}: ${fileId}${rangeHeader ? " (" + rangeHeader + ")" : ""}`);
+
     try {
-      const apiRes = await matonFetch(`/google-drive/drive/v3/files/${fileId}?alt=media`, { binary: true });
-      if (apiRes.status === 200) {
-        if (apiRes.headers["content-type"]) res.setHeader("Content-Type", apiRes.headers["content-type"]);
-        else res.setHeader("Content-Type", "audio/mpeg");
+      const fetchOpts = { binary: true };
+      if (rangeHeader) fetchOpts.headers = { Range: rangeHeader };
+
+      const apiRes = await matonFetch(`/google-drive/drive/v3/files/${fileId}?alt=media`, fetchOpts);
+
+      if (apiRes.status === 200 || apiRes.status === 206) {
+        const ctype = apiRes.headers["content-type"] || "audio/mpeg";
+        res.setHeader("Content-Type", ctype);
         if (apiRes.headers["content-length"]) res.setHeader("Content-Length", apiRes.headers["content-length"]);
+        if (apiRes.headers["content-range"]) res.setHeader("Content-Range", apiRes.headers["content-range"]);
         res.setHeader("Accept-Ranges", "bytes");
         res.setHeader("Access-Control-Allow-Origin", "*");
         res.setHeader("Cache-Control", "public, max-age=86400");
-        res.end(apiRes.body);
+
+        if (isHead) {
+          res.writeHead(apiRes.status);
+          res.end();
+        } else {
+          res.writeHead(apiRes.status);
+          res.end(apiRes.body);
+        }
       } else {
         console.error(`[AUDIO] Error ${apiRes.status}:`, apiRes.body.error || apiRes.body.message);
         res.writeHead(apiRes.status, { "Content-Type": "text/plain" });
