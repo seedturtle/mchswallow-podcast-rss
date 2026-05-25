@@ -88,7 +88,7 @@ function parseEpisodeMeta(file, index, totalFiles) {
   const description = `${PODCAST_TITLE}，${title}。${PODCAST_DESCRIPTION}`;
   const pubDate = rfc2822(file.createdTime ? new Date(file.createdTime) : null);
   const size = parseInt(file.size || 0);
-  const audioUrl = `${SITE_URL.replace(/\/$/, "")}/audio/${file.id}.mp3`;
+  const audioUrl = `${SITE_URL.replace(/\/$/, "")}/audio/ep${episodeNum}.mp3`;
   const duration = Math.floor(size / 16000); // 粗略估算秒數
 
   return { title, description, pubDate, size, audioUrl, duration, episodeNum };
@@ -107,7 +107,7 @@ function buildRSS(files) {
       <itunes:summary><![CDATA[${meta.description}]]></itunes:summary>
       <pubDate>${meta.pubDate}</pubDate>
       <enclosure url="${meta.audioUrl}" type="audio/mpeg" length="${meta.size}"/>
-      <guid isPermaLink="false">mchswallow_ep${meta.episodeNum}_${file.id}</guid>
+      <guid isPermaLink="false">mchswallow_ep${meta.episodeNum}</guid>
       <itunes:title>${meta.title}</itunes:title>
       <itunes:episode>${meta.episodeNum}</itunes:episode>
       <itunes:episodeType>full</itunes:episodeType>
@@ -189,16 +189,31 @@ const server = http.createServer(async (req, res) => {
 
   const audioMatch = pathname.match(/^\/audio\/(.+)/);
   if (audioMatch) {
-    const fileId = audioMatch[1].replace(/\.mp3$/i, "");
+    let fileId = audioMatch[1].replace(/\.mp3$/i, "");
     const isHead = req.method === "HEAD";
     const rangeHeader = req.headers["range"];
-    console.log(`[AUDIO] ${isHead ? "HEAD" : "GET"}: ${fileId}${rangeHeader ? " (" + rangeHeader + ")" : ""}`);
 
-    // 舊 ID 轉址—Apple 暫存尚未更新時自動導到新檔案
+    // /audio/ep<N>.mp3 → 自動查 Google Drive 對應的檔案 ID（集數穩定，換檔不受影響）
+    const epMatch = fileId.match(/^ep(\d+)$/i);
+    if (epMatch) {
+      try {
+        const files = await getAudioFiles();
+        const targetEpNum = parseInt(epMatch[1], 10);
+        const file = files.find((f, idx) => (files.length - idx) === targetEpNum);
+        if (file) fileId = file.id;
+        // 找不到就保留原本的 ep<N>（給 404）
+      } catch {
+        // 查不到就保留原值，後續會 404
+      }
+    }
+
+    // 舊 ID 轉址表—換檔時自動導到新檔案
     const fileRedirects = {
       "1lNP32OOREUnRHeo0AZ9-DOjZvc5V3-89": "12GAt6fvOUw_IHmIrEJlTVPukn6Dus9m1",
     };
     const resolvedId = fileRedirects[fileId] || fileId;
+
+    console.log(`[AUDIO] ${isHead ? "HEAD" : "GET"}: ${fileId} → ${resolvedId}${rangeHeader ? " (" + rangeHeader + ")" : ""}`);
 
     try {
       // HEAD — 只用 probe 探測大小，不下載完整檔案
