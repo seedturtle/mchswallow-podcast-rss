@@ -12,7 +12,7 @@ const MATON_API_KEY = process.env.MATON_API_KEY || "";
 const MATON_CONNECTION_ID = process.env.MATON_CONN || process.env.MATON_CONNECTION_ID || "aa84aef8-287a-4271-a4b7-26a67b0c6adf";
 const PODCAST_TITLE = process.env.PODCAST_TITLE || "聽說我們是蠶食鯨吞";
 const PODCAST_DESCRIPTION = process.env.PODCAST_DESCRIPTION || "吞嚥復健、肌能訓練與臨床經驗分享。歡迎聽眾寫信到 mchswallow@gmail.com 提問或表達意見，主持人會在製作新集數時參考大家的回饋一起討論！";
-const PODCAST_AUTHOR = process.env.PODCAST_AUTHOR || "門諾醫院聽語團隊";
+const PODCAST_AUTHOR = process.env.PODCAST_AUTHOR || "蠶食鯨吞聽語團隊";
 const PODCAST_EMAIL = process.env.PODCAST_EMAIL || "mchswallow@gmail.com";
 const PODCAST_COVER_URL = process.env.PODCAST_COVER_URL || `${SITE_URL.replace(/\/$/, "")}/cover.png`;
 
