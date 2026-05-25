@@ -194,11 +194,17 @@ const server = http.createServer(async (req, res) => {
     const rangeHeader = req.headers["range"];
     console.log(`[AUDIO] ${isHead ? "HEAD" : "GET"}: ${fileId}${rangeHeader ? " (" + rangeHeader + ")" : ""}`);
 
+    // 舊 ID 轉址—Apple 暫存尚未更新時自動導到新檔案
+    const fileRedirects = {
+      "1lNP32OOREUnRHeo0AZ9-DOjZvc5V3-89": "12GAt6fvOUw_IHmIrEJlTVPukn6Dus9m1",
+    };
+    const resolvedId = fileRedirects[fileId] || fileId;
+
     try {
       // HEAD — 只用 probe 探測大小，不下載完整檔案
       if (isHead) {
         const probeOpts = { binary: true, headers: { Range: "bytes=0-0" } };
-        const probeRes = await matonFetch(`/google-drive/drive/v3/files/${fileId}?alt=media`, probeOpts);
+        const probeRes = await matonFetch(`/google-drive/drive/v3/files/${resolvedId}?alt=media`, probeOpts);
         let totalSize = 0;
         if (probeRes.headers["content-range"]) {
           const match = probeRes.headers["content-range"].match(/\/(\d+)$/);
@@ -239,7 +245,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       // GET — 從 Maton 下載完整音檔（~4MB，記憶體可負擔）
-      const fileRes = await matonFetch(`/google-drive/drive/v3/files/${fileId}?alt=media`, { binary: true });
+      const fileRes = await matonFetch(`/google-drive/drive/v3/files/${resolvedId}?alt=media`, { binary: true });
 
       if (fileRes.status !== 200) {
         console.error(`[AUDIO] Error ${fileRes.status}:`, fileRes.body.error || fileRes.body.message);
