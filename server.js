@@ -14,7 +14,7 @@ const PODCAST_TITLE = process.env.PODCAST_TITLE || "聽說我們蠶食鯨吞";
 const PODCAST_DESCRIPTION = process.env.PODCAST_DESCRIPTION || "吞嚥復健、肌能訓練與臨床經驗分享。歡迎聽眾寫信到 mchswallow@gmail.com 提問或表達意見，主持人會在製作新集數時參考大家的回饋一起討論！";
 const PODCAST_AUTHOR = process.env.PODCAST_AUTHOR || "蠶食鯨吞聽語團隊";
 const PODCAST_EMAIL = process.env.PODCAST_EMAIL || "mchswallow@gmail.com";
-const PODCAST_COVER_URL = process.env.PODCAST_COVER_URL || `${SITE_URL.replace(/\/$/, "")}/cover-v2.png`;
+const PODCAST_COVER_URL = process.env.PODCAST_COVER_URL || `${SITE_URL.replace(/\/$/, "")}/cover-v3.png`;
 
 function matonFetch(path, opts = {}) {
   return new Promise((resolve, reject) => {
@@ -322,8 +322,12 @@ const server = http.createServer(async (req, res) => {
   }
 
   // 封面圖片（支援 byte-range）
-  if (pathname === "/cover.png" || pathname === "/cover-v2.png") {
-    const coverPath = path.join(__dirname, "public", pathname === "/cover-v2.png" ? "cover-v2.png" : "cover.png");
+  if (pathname === "/cover.png" || pathname === "/cover-v2.png" || pathname === "/cover-v3.png") {
+    let coverFile;
+    if (pathname === "/cover-v3.png") coverFile = "cover-v3.png";
+    else if (pathname === "/cover-v2.png") coverFile = "cover-v2.png";
+    else coverFile = "cover.png";
+    const coverPath = path.join(__dirname, "public", coverFile);
     if (fs.existsSync(coverPath)) {
       const coverData = fs.readFileSync(coverPath);
       const totalSize = coverData.length;
@@ -414,7 +418,7 @@ const server = http.createServer(async (req, res) => {
   </style>
 </head>
 <body>
-  <img src="/cover-v2.png" alt="${PODCAST_TITLE}">
+  <img src="/cover-v3.png" alt="${PODCAST_TITLE}">
   <h1>${PODCAST_TITLE}</h1>
   <p>${PODCAST_DESCRIPTION}</p>
   <p>📻 ${PODCAST_AUTHOR}</p>
