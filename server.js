@@ -5,7 +5,7 @@ const path = require("path");
 const { URL } = require("url");
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
-const SITE_URL = process.env.SITE_URL || "https://huilan-tingyu-podcast.zeabur.app";
+const SITE_URL = process.env.SITE_URL || "https://mchswallowpodcast.zeabur.app";
 const PODCAST_FOLDER_ID = process.env.PODCAST_FOLDER_ID || "1Yiwx-jIqmw37TvbMl5dDbVPcgetEPzIW";
 const MATON_API_KEY = process.env.MATON_API_KEY || "";
 // 支援 MATON_CONN（README 標準）或 MATON_CONNECTION_ID（舊版）
@@ -14,7 +14,7 @@ const PODCAST_TITLE = process.env.PODCAST_TITLE || "洄瀾聽雨";
 const PODCAST_DESCRIPTION = process.env.PODCAST_DESCRIPTION || "吞嚥復健、肌能訓練與臨床經驗分享。歡迎聽眾寫信到 mchswallow@gmail.com 提問或表達意見，主持人會在製作新集數時參考大家的回饋一起討論！";
 const PODCAST_AUTHOR = process.env.PODCAST_AUTHOR || "洄瀾聽語團隊";
 const PODCAST_EMAIL = process.env.PODCAST_EMAIL || "mchswallow@gmail.com";
-const PODCAST_COVER_URL = process.env.PODCAST_COVER_URL || `${SITE_URL.replace(/\/$/, "")}/cover`;
+const PODCAST_COVER_URL = process.env.PODCAST_COVER_URL || `${SITE_URL.replace(/\/$/, "")}/cover-v4.png`;
 
 function matonFetch(path, opts = {}) {
   return new Promise((resolve, reject) => {
