@@ -5,16 +5,16 @@ const path = require("path");
 const { URL } = require("url");
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
-const SITE_URL = process.env.SITE_URL || "https://mchswallowpodcast.zeabur.app";
+const SITE_URL = process.env.SITE_URL || "https://huilan-tingyu-podcast.zeabur.app";
 const PODCAST_FOLDER_ID = process.env.PODCAST_FOLDER_ID || "1Yiwx-jIqmw37TvbMl5dDbVPcgetEPzIW";
 const MATON_API_KEY = process.env.MATON_API_KEY || "";
 // 支援 MATON_CONN（README 標準）或 MATON_CONNECTION_ID（舊版）
 const MATON_CONNECTION_ID = process.env.MATON_CONN || process.env.MATON_CONNECTION_ID || "aa84aef8-287a-4271-a4b7-26a67b0c6adf";
-const PODCAST_TITLE = process.env.PODCAST_TITLE || "聽說我們蠶食鯨吞";
+const PODCAST_TITLE = process.env.PODCAST_TITLE || "洄瀾聽雨";
 const PODCAST_DESCRIPTION = process.env.PODCAST_DESCRIPTION || "吞嚥復健、肌能訓練與臨床經驗分享。歡迎聽眾寫信到 mchswallow@gmail.com 提問或表達意見，主持人會在製作新集數時參考大家的回饋一起討論！";
-const PODCAST_AUTHOR = process.env.PODCAST_AUTHOR || "蠶食鯨吞聽語團隊";
+const PODCAST_AUTHOR = process.env.PODCAST_AUTHOR || "洄瀾聽語團隊";
 const PODCAST_EMAIL = process.env.PODCAST_EMAIL || "mchswallow@gmail.com";
-const PODCAST_COVER_URL = process.env.PODCAST_COVER_URL || `${SITE_URL.replace(/\/$/, "")}/cover-v3.png`;
+const PODCAST_COVER_URL = process.env.PODCAST_COVER_URL || `${SITE_URL.replace(/\/$/, "")}/cover`;
 
 function matonFetch(path, opts = {}) {
   return new Promise((resolve, reject) => {
@@ -107,7 +107,7 @@ function buildRSS(files) {
       <itunes:summary><![CDATA[${meta.description}]]></itunes:summary>
       <pubDate>${meta.pubDate}</pubDate>
       <enclosure url="${meta.audioUrl}" type="audio/mpeg" length="${meta.size}"/>
-      <guid isPermaLink="false">mchswallow_ep${meta.episodeNum}</guid>
+      <guid isPermaLink="false">huilan_tingyu_ep${meta.episodeNum}</guid>
       <itunes:title>${meta.title}</itunes:title>
       <itunes:episode>${meta.episodeNum}</itunes:episode>
       <itunes:episodeType>full</itunes:episodeType>
@@ -151,7 +151,7 @@ function buildRSS(files) {
     <ttl>60</ttl>
     <atom:link href="${base}/feed.xml" rel="self" type="application/rss+xml"/>
     <podcast:locked>no</podcast:locked>
-    <podcast:guid>mchswallowpodcast</podcast:guid>
+    <podcast:guid>huilan-tingyu-podcast</podcast:guid>
     <podcast:medium>audio</podcast:medium>
     <podcast:showOwner>true</podcast:showOwner>
 ${items}
@@ -322,9 +322,9 @@ const server = http.createServer(async (req, res) => {
   }
 
   // 封面圖片（支援 byte-range）
-  if (pathname === "/cover.png" || pathname === "/cover-v2.png" || pathname === "/cover-v3.png") {
+  if (pathname === "/cover.png" || pathname === "/cover-v2.png" || pathname === "/cover-v4.png") {
     let coverFile;
-    if (pathname === "/cover-v3.png") coverFile = "cover-v3.png";
+    if (pathname === "/cover-v4.png") coverFile = "cover-v4.png";
     else if (pathname === "/cover-v2.png") coverFile = "cover-v2.png";
     else coverFile = "cover.png";
     const coverPath = path.join(__dirname, "public", coverFile);
@@ -418,7 +418,7 @@ const server = http.createServer(async (req, res) => {
   </style>
 </head>
 <body>
-  <img src="/cover-v3.png" alt="${PODCAST_TITLE}">
+  <img src="/cover-v4.png" alt="${PODCAST_TITLE}">
   <h1>${PODCAST_TITLE}</h1>
   <p>${PODCAST_DESCRIPTION}</p>
   <p>📻 ${PODCAST_AUTHOR}</p>
