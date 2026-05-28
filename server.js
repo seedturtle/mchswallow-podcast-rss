@@ -60,7 +60,27 @@ function parseID3(buffer) {
       meta[frameId] = text.replace(/\0/g, "").trim();
     }
 
-    // COMM frame (comment)
+    // TXXX frame (user-defined text)
+    if (frameId === "TXXX") {
+      const encoding = frameData[0];
+      let desc = "", value = "";
+      // Find null separator between description and value
+      let sep = 1;
+      while (sep < frameData.length && frameData[sep] !== 0) sep++;
+      if (encoding === 0 || encoding === 3) {
+        desc = frameData.slice(1, sep).toString(encoding === 3 ? "utf8" : "latin1");
+        value = frameData.slice(sep + 1).toString(encoding === 3 ? "utf8" : "latin1").replace(/\0/g, "").trim();
+      } else if (encoding === 1) {
+        desc = frameData.slice(1, sep).toString("utf16le");
+        value = frameData.slice(sep + 1).toString("utf16le").replace(/\0/g, "").trim();
+      }
+      // ffmpeg writes "-metadata comment=" as TXXX with desc="comment"
+      if (desc.toLowerCase() === "comment") {
+        meta.comment = value;
+      }
+    }
+
+    // COMM frame (comment) — some tools use this instead of TXXX
     if (frameId === "COMM") {
       const encoding = frameData[0];
       // language code (3 bytes) + short description (null-terminated) + comment text
