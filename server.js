@@ -16,6 +16,113 @@ const PODCAST_AUTHOR = process.env.PODCAST_AUTHOR || "洄瀾聽語團隊";
 const PODCAST_EMAIL = process.env.PODCAST_EMAIL || "mchswallow@gmail.com";
 const PODCAST_COVER_URL = process.env.PODCAST_COVER_URL || `${SITE_URL.replace(/\/$/, "")}/cover-v4.png`;
 
+// ── ID3 Metadata Cache ─────────────────────────────────────────────
+const ID3_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const id3Cache = { data: null, ts: 0 };
+
+function parseID3(buffer) {
+  const meta = {};
+  // Check for ID3v2 header
+  if (buffer.length < 10 || buffer[0] !== 0x49 || buffer[1] !== 0x44 || buffer[2] !== 0x33) return meta;
+
+  const version = buffer[3]; // 3 = ID3v2.3, 4 = ID3v2.4
+  const size = ((buffer[6] & 0x7f) << 21) | ((buffer[7] & 0x7f) << 14) | ((buffer[8] & 0x7f) << 7) | (buffer[9] & 0x7f);
+  const end = Math.min(size + 10, buffer.length);
+
+  let pos = 10;
+  while (pos < end - 10) {
+    const frameId = buffer.toString("ascii", pos, pos + 4);
+    if (frameId[0] === "\0") break; // padding
+
+    let frameSize;
+    if (version === 4) {
+      frameSize = ((buffer[pos + 4] & 0x7f) << 21) | ((buffer[pos + 5] & 0x7f) << 14) | ((buffer[pos + 6] & 0x7f) << 7) | (buffer[pos + 7] & 0x7f);
+    } else {
+      frameSize = (buffer[pos + 4] << 24) | (buffer[pos + 5] << 16) | (buffer[pos + 6] << 8) | buffer[pos + 7];
+    }
+
+    if (frameSize <= 0 || pos + 10 + frameSize > end) break;
+
+    const frameData = buffer.slice(pos + 10, pos + 10 + frameSize);
+
+    // Text frames (T*** except TXXX)
+    if (frameId[0] === "T" && frameId !== "TXXX" && frameId !== "TXXX") {
+      const encoding = frameData[0];
+      let text;
+      if (encoding === 0 || encoding === 3) {
+        text = frameData.slice(1).toString(encoding === 3 ? "utf8" : "latin1");
+      } else if (encoding === 1) {
+        // UTF-16LE with BOM
+        text = frameData.slice(4).toString("utf16le");
+      } else {
+        text = frameData.slice(1).toString("utf8");
+      }
+      meta[frameId] = text.replace(/\0/g, "").trim();
+    }
+
+    // COMM frame (comment)
+    if (frameId === "COMM") {
+      const encoding = frameData[0];
+      // language code (3 bytes) + short description (null-terminated) + comment text
+      let pos2 = 4; // skip encoding(1) + lang(3)
+      while (pos2 < frameData.length && frameData[pos2] !== 0) pos2++;
+      pos2++; // skip null terminator
+
+      const commentBuf = frameData.slice(pos2);
+      if (encoding === 0 || encoding === 3) {
+        meta.comment = commentBuf.toString(encoding === 3 ? "utf8" : "latin1").replace(/\0/g, "").trim();
+      } else if (encoding === 1) {
+        meta.comment = commentBuf.toString("utf16le").replace(/\0/g, "").trim();
+      } else {
+        meta.comment = commentBuf.toString("utf8").replace(/\0/g, "").trim();
+      }
+    }
+
+    pos += 10 + frameSize;
+  }
+
+  return meta;
+}
+
+async function fetchID3FromFile(fileId) {
+  try {
+    // Download first 30KB — enough for ID3 tags
+    const res = await matonFetch(`/google-drive/drive/v3/files/${fileId}?alt=media`, {
+      binary: true,
+      headers: { Range: "bytes=0-30719" },
+    });
+    if (res.status === 200 || res.status === 206) {
+      return parseID3(Buffer.isBuffer(res.body) ? res.body : Buffer.from(res.body));
+    }
+  } catch (e) {
+    console.error(`[ID3] Error fetching ${fileId}:`, e.message);
+  }
+  return {};
+}
+
+async function getCachedID3Meta() {
+  if (id3Cache.data && Date.now() - id3Cache.ts < ID3_CACHE_TTL_MS) {
+    return id3Cache.data;
+  }
+  console.log("[ID3] Refreshing metadata cache...");
+  const files = await getAudioFiles();
+  const result = {};
+  // Fetch in parallel, max 6 at a time
+  for (let i = 0; i < files.length; i += 6) {
+    const batch = files.slice(i, i + 6);
+    const metas = await Promise.all(batch.map((f) => fetchID3FromFile(f.id)));
+    batch.forEach((f, j) => {
+      result[f.id] = metas[j];
+    });
+  }
+  id3Cache.data = result;
+  id3Cache.ts = Date.now();
+  console.log(`[ID3] Cached metadata for ${Object.keys(result).length} files`);
+  return result;
+}
+
+// ── Maton / Google Drive ────────────────────────────────────────────
+
 function matonFetch(path, opts = {}) {
   return new Promise((resolve, reject) => {
     const fullUrl = path.startsWith("http") ? path : `https://gateway.maton.ai${path}`;
@@ -66,17 +173,21 @@ async function getAudioFiles() {
   return res.body.files;
 }
 
+// ── RSS Helpers ─────────────────────────────────────────────────────
+
 function rfc2822(date) {
   return (date || new Date()).toUTCString().replace("GMT", "+0000");
 }
 
-function parseEpisodeMeta(file, index, totalFiles) {
-  const episodeNum = totalFiles - index; // 最新的是第1集
+function parseEpisodeMeta(file, index, totalFiles, id3meta) {
+  const episodeNum = totalFiles - index;
   const dateMatch = file.name.match(/(\d{4})[_-]?(\d{2})[_-]?(\d{2})/);
   const epMatch = file.name.match(/[Ee][Pp]\s*(\d+)/);
 
   let title;
-  if (dateMatch) {
+  if (id3meta && id3meta.TIT2) {
+    title = id3meta.TIT2;
+  } else if (dateMatch) {
     const [, y, m, d] = dateMatch;
     title = `第${episodeNum}集｜${y}/${m}/${d}`;
   } else if (epMatch) {
@@ -85,21 +196,26 @@ function parseEpisodeMeta(file, index, totalFiles) {
     title = file.name.replace(/\.mp3$/i, "");
   }
 
-  const description = `${PODCAST_TITLE}，${title}。${PODCAST_DESCRIPTION}`;
+  // Prefer ID3 comment as description, fallback to default
+  const description =
+    id3meta && id3meta.comment
+      ? id3meta.comment
+      : `${PODCAST_TITLE}，${title}。${PODCAST_DESCRIPTION}`;
+
   const pubDate = rfc2822(file.createdTime ? new Date(file.createdTime) : null);
   const size = parseInt(file.size || 0);
   const audioUrl = `${SITE_URL.replace(/\/$/, "")}/audio/ep${episodeNum}.mp3`;
-  const duration = Math.floor(size / 16000); // 粗略估算秒數
+  const duration = Math.floor(size / 16000);
 
   return { title, description, pubDate, size, audioUrl, duration, episodeNum };
 }
 
-function buildRSS(files) {
+function buildRSS(files, id3meta) {
   const base = SITE_URL.replace(/\/$/, "");
   const now = rfc2822();
   const items = files
     .map((file, index) => {
-      const meta = parseEpisodeMeta(file, index, files.length);
+      const meta = parseEpisodeMeta(file, index, files.length, id3meta ? id3meta[file.id] : null);
       return `    <item>
       <title><![CDATA[${meta.title}]]></title>
       <link>${base}/</link>
@@ -159,6 +275,8 @@ ${items}
 </rss>`;
 }
 
+// ── HTTP Server ─────────────────────────────────────────────────────
+
 const server = http.createServer(async (req, res) => {
   const parsedUrl = new URL(req.url, `http://${req.headers.host || "localhost"}`);
   const pathname = parsedUrl.pathname;
@@ -174,11 +292,12 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // ── RSS Feed ──
   if (pathname === "/feed.xml") {
     res.writeHead(200, { "Content-Type": "application/rss+xml; charset=utf-8", "Cache-Control": "no-cache" });
     try {
-      const files = await getAudioFiles();
-      res.end(buildRSS(files));
+      const [files, id3meta] = await Promise.all([getAudioFiles(), getCachedID3Meta()]);
+      res.end(buildRSS(files, id3meta));
     } catch (e) {
       console.error("[RSS] Error:", e.message);
       res.writeHead(500, { "Content-Type": "text/plain" });
@@ -187,13 +306,14 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // ── Audio Proxy ──
   const audioMatch = pathname.match(/^\/audio\/(.+)/);
   if (audioMatch) {
     let fileId = audioMatch[1].replace(/\.mp3$/i, "");
     const isHead = req.method === "HEAD";
     const rangeHeader = req.headers["range"];
 
-    // /audio/ep<N>.mp3 → 自動查 Google Drive 對應的檔案 ID（集數穩定，換檔不受影響）
+    // /audio/ep<N>.mp3 → 自動查 Google Drive 對應的檔案 ID
     const epMatch = fileId.match(/^ep(\d+)$/i);
     if (epMatch) {
       try {
@@ -201,13 +321,12 @@ const server = http.createServer(async (req, res) => {
         const targetEpNum = parseInt(epMatch[1], 10);
         const file = files.find((f, idx) => (files.length - idx) === targetEpNum);
         if (file) fileId = file.id;
-        // 找不到就保留原本的 ep<N>（給 404）
       } catch {
         // 查不到就保留原值，後續會 404
       }
     }
 
-    // 舊 ID 轉址表—換檔時自動導到新檔案
+    // 舊 ID 轉址表
     const fileRedirects = {
       "1lNP32OOREUnRHeo0AZ9-DOjZvc5V3-89": "12GAt6fvOUw_IHmIrEJlTVPukn6Dus9m1",
     };
@@ -216,7 +335,6 @@ const server = http.createServer(async (req, res) => {
     console.log(`[AUDIO] ${isHead ? "HEAD" : "GET"}: ${fileId} → ${resolvedId}${rangeHeader ? " (" + rangeHeader + ")" : ""}`);
 
     try {
-      // HEAD — 只用 probe 探測大小，不下載完整檔案
       if (isHead) {
         const probeOpts = { binary: true, headers: { Range: "bytes=0-0" } };
         const probeRes = await matonFetch(`/google-drive/drive/v3/files/${resolvedId}?alt=media`, probeOpts);
@@ -233,7 +351,6 @@ const server = http.createServer(async (req, res) => {
           "Cache-Control": "public, max-age=86400",
         };
 
-        // HEAD + Range → 206 + Content-Range
         if (rangeHeader) {
           const parts = rangeHeader.replace(/bytes=\s*/i, "").split("-");
           const start = parseInt(parts[0], 10);
@@ -253,13 +370,12 @@ const server = http.createServer(async (req, res) => {
           return;
         }
 
-        // 一般 HEAD (無 Range) → 200
         res.writeHead(200, { ...headBase, "Content-Length": totalSize });
         res.end();
         return;
       }
 
-      // GET — 從 Maton 下載完整音檔（~4MB，記憶體可負擔）
+      // GET
       const fileRes = await matonFetch(`/google-drive/drive/v3/files/${resolvedId}?alt=media`, { binary: true });
 
       if (fileRes.status !== 200) {
@@ -279,14 +395,12 @@ const server = http.createServer(async (req, res) => {
         "Cache-Control": "public, max-age=86400",
       };
 
-      // GET with Range — 本地 slice，回傳 206
       if (rangeHeader) {
         const parts = rangeHeader.replace(/bytes=\s*/i, "").split("-");
         const start = parseInt(parts[0], 10);
         const end = parts[1] ? parseInt(parts[1], 10) : totalSize - 1;
         const chunkSize = Math.min(end - start + 1, totalSize - start);
 
-        // 驗證範圍
         if (start >= totalSize || start < 0) {
           res.writeHead(416, { "Content-Range": `bytes */${totalSize}` });
           res.end();
@@ -303,7 +417,6 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
-      // GET without Range — 完整檔案
       res.writeHead(200, { ...baseHeaders, "Content-Length": totalSize });
       res.end(audioData);
 
@@ -315,13 +428,14 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // ── Health ──
   if (pathname === "/health") {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ status: "ok", time: new Date().toISOString() }));
     return;
   }
 
-  // 封面圖片（支援 byte-range）
+  // ── Cover images ──
   if (pathname === "/cover.png" || pathname === "/cover-v2.png" || pathname === "/cover-v4.png") {
     let coverFile;
     if (pathname === "/cover-v4.png") coverFile = "cover-v4.png";
@@ -372,17 +486,25 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Debug — 直接回傳 Maton API 的原始回應
+  // ── Debug ──
   if (pathname === "/debug") {
     try {
-      const files = await getAudioFiles();
+      const [files, id3meta] = await Promise.all([getAudioFiles(), getCachedID3Meta()]);
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({
         hasApiKey: !!MATON_API_KEY,
         connId: MATON_CONNECTION_ID,
         folderId: PODCAST_FOLDER_ID,
         fileCount: files.length,
-        files: files.map(f => ({ id: f.id, name: f.name, size: f.size, created: f.createdTime })),
+        files: files.map((f, i) => ({
+          id: f.id,
+          name: f.name,
+          size: f.size,
+          created: f.createdTime,
+          episodeNum: files.length - i,
+          id3: id3meta[f.id] || {},
+        })),
+        cacheAge: Date.now() - id3Cache.ts,
         env: {
           MATON_CONN: !!process.env.MATON_CONN,
           MATON_CONNECTION_ID: !!process.env.MATON_CONNECTION_ID,
@@ -397,7 +519,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 首頁 — 簡單的 Podcast 資訊頁
+  // ── Homepage ──
   if (pathname === "/") {
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
     res.end(`<!DOCTYPE html>
@@ -437,5 +559,6 @@ server.listen(PORT, () => {
   console.log(`🌐  RSS Feed: ${SITE_URL}/feed.xml`);
   console.log(`🎵  Audio Proxy: ${SITE_URL}/audio/<file_id>`);
   console.log(`❤️  Health: ${SITE_URL}/health`);
+  console.log(`📝  ID3 metadata: 讀取 MP3 檔案內嵌的 comment 作為單集說明`);
   if (!MATON_API_KEY) console.warn("⚠️  MATON_API_KEY 未設定！");
 });
