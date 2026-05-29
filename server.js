@@ -53,7 +53,7 @@ function parseID3(buffer) {
         text = frameData.slice(1).toString(encoding === 3 ? "utf8" : "latin1");
       } else if (encoding === 1) {
         // UTF-16LE with BOM
-        text = frameData.slice(4).toString("utf16le");
+        text = frameData.slice(3).toString("utf16le");
       } else {
         text = frameData.slice(1).toString("utf8");
       }
