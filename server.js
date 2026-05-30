@@ -184,7 +184,7 @@ function matonFetch(path, opts = {}) {
 async function getAudioFiles() {
   const query = encodeURIComponent(`'${PODCAST_FOLDER_ID}' in parents and mimeType='audio/mpeg' and trashed=false`);
   const res = await matonFetch(
-    `/google-drive/drive/v3/files?q=${query}&fields=files(id,name,mimeType,createdTime,size)&orderBy=createdTime desc`
+    `/google-drive/drive/v3/files?q=${query}&fields=files(id,name,mimeType,createdTime,size)&orderBy=createdTime asc`
   );
   if (res.status !== 200 || !res.body.files) {
     console.error("[RSS] Error:", res.body.message || JSON.stringify(res.body));
@@ -200,7 +200,7 @@ function rfc2822(date) {
 }
 
 function parseEpisodeMeta(file, index, totalFiles, id3meta) {
-  const episodeNum = totalFiles - index;
+  const episodeNum = index + 1; // ASC sort: oldest=ep1, newest=epN (stable on addition)
   const dateMatch = file.name.match(/(\d{4})[_-]?(\d{2})[_-]?(\d{2})/);
   const epMatch = file.name.match(/[Ee][Pp]\s*(\d+)/);
 
@@ -227,7 +227,11 @@ function parseEpisodeMeta(file, index, totalFiles, id3meta) {
   const audioUrl = `${SITE_URL.replace(/\/$/, "")}/audio/ep${episodeNum}.mp3`;
   const duration = Math.floor(size / 16000);
 
-  return { title, description, pubDate, size, audioUrl, duration, episodeNum };
+  // Stable GUID: based on filename, not position
+  // Same filename = same episode (handles re-upload/replacement correctly)
+  const guid = `huilan_tingyu_${file.name.replace(/\.mp3$/i, "")}`;
+
+  return { title, description, pubDate, size, audioUrl, duration, episodeNum, guid };
 }
 
 function buildRSS(files, id3meta) {
@@ -236,6 +240,10 @@ function buildRSS(files, id3meta) {
   const items = files
     .map((file, index) => {
       const meta = parseEpisodeMeta(file, index, files.length, id3meta ? id3meta[file.id] : null);
+      return meta;
+    })
+    .reverse() // newest first for RSS feed
+    .map((meta) => {
       return `    <item>
       <title><![CDATA[${meta.title}]]></title>
       <link>${base}/</link>
@@ -243,7 +251,7 @@ function buildRSS(files, id3meta) {
       <itunes:summary><![CDATA[${meta.description}]]></itunes:summary>
       <pubDate>${meta.pubDate}</pubDate>
       <enclosure url="${meta.audioUrl}" type="audio/mpeg" length="${meta.size}"/>
-      <guid isPermaLink="false">huilan_tingyu_ep${meta.episodeNum}</guid>
+      <guid isPermaLink="false">${meta.guid}</guid>
       <itunes:title>${meta.title}</itunes:title>
       <itunes:episode>${meta.episodeNum}</itunes:episode>
       <itunes:episodeType>full</itunes:episodeType>
@@ -344,7 +352,7 @@ const server = http.createServer(async (req, res) => {
           res.end(`Episode ${targetEpNum} not found (${files.length} episodes available)`);
           return;
         }
-        const file = files.find((f, idx) => (files.length - idx) === targetEpNum);
+        const file = files[targetEpNum - 1]; // ASC sort: ep1 = index 0
         if (file) fileId = file.id;
       } catch {
         // 查不到就保留原值，後續會 404
@@ -526,7 +534,7 @@ const server = http.createServer(async (req, res) => {
           name: f.name,
           size: f.size,
           created: f.createdTime,
-          episodeNum: files.length - i,
+          episodeNum: i + 1,
           id3: id3meta[f.id] || {},
         })),
         cacheAge: Date.now() - id3Cache.ts,
