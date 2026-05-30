@@ -339,6 +339,11 @@ const server = http.createServer(async (req, res) => {
       try {
         const files = await getAudioFiles();
         const targetEpNum = parseInt(epMatch[1], 10);
+        if (targetEpNum < 1 || targetEpNum > files.length) {
+          res.writeHead(404, { "Content-Type": "text/plain" });
+          res.end(`Episode ${targetEpNum} not found (${files.length} episodes available)`);
+          return;
+        }
         const file = files.find((f, idx) => (files.length - idx) === targetEpNum);
         if (file) fileId = file.id;
       } catch {
