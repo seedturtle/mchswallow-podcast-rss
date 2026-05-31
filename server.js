@@ -285,8 +285,8 @@ function parseEpisodeMeta(file, index, totalFiles, id3meta) {
     pubDate = rfc2822(file.createdTime ? new Date(file.createdTime) : null);
   }
   const size = parseInt(file.size || 0);
-  // 直接使用 Google Drive 直連網址（需將 & 轉義為 &amp; 避免 XML 解析錯誤）
-  const audioUrl = `https://drive.google.com/uc?export=download&amp;id=${file.id}`;
+  // 使用 Zeabur 代理（支援 Apple 要求的 HEAD 與 byte-range 請求）
+  const audioUrl = `${SITE_URL.replace(/\/$/, "")}/audio/ep${episodeNum}.mp3`;
   const duration = Math.floor(size / 16000);
 
   // Stable GUID: based on filename, not position
