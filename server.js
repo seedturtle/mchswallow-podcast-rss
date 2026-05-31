@@ -286,12 +286,13 @@ function parseEpisodeMeta(file, index, totalFiles, id3meta) {
   }
   const size = parseInt(file.size || 0);
   // 使用 Zeabur 代理（支援 Apple 要求的 HEAD 與 byte-range 請求）
-  const audioUrl = `${SITE_URL.replace(/\/$/, "")}/audio/ep${episodeNum}.mp3`;
+  // 使用 Google Drive 檔案 ID 作為網址（不依賴排序位置，增刪檔案也不影響對應）
+  const audioUrl = `${SITE_URL.replace(/\/$/, "")}/audio/${file.id}.mp3`;
   const duration = Math.floor(size / 16000);
 
-  // Stable GUID: based on filename, not position
-  // Same filename = same episode (handles re-upload/replacement correctly)
-  const guid = `huilan_tingyu_${file.name.replace(/\.mp3$/i, "")}`;
+  // Stable GUID: based on filename + file ID (與拉拉熊做法一致)
+  // file.id 確保唯一性，即使同名檔案重新上傳也是不同 ID
+  const guid = `huilan_tingyu_${file.name.replace(/\.mp3$/i, "")}_${file.id}`;
 
   return { title, description, pubDate, size, audioUrl, duration, episodeNum, guid };
 }
