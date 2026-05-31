@@ -657,4 +657,3 @@ server.listen(PORT, () => {
   console.log(`📝  ID3 metadata: 讀取 MP3 檔案內嵌的 comment 作為單集說明`);
   if (!MATON_API_KEY) console.warn("⚠️  MATON_API_KEY 未設定！");
 });
-// deploy trigger 1780211615
