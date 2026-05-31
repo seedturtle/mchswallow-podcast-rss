@@ -285,8 +285,8 @@ function parseEpisodeMeta(file, index, totalFiles, id3meta) {
     pubDate = rfc2822(file.createdTime ? new Date(file.createdTime) : null);
   }
   const size = parseInt(file.size || 0);
-  // 直接使用 Google Drive 直連網址（支援播客 APP 跳轉播放）
-  const audioUrl = `https://drive.google.com/uc?export=download&id=${file.id}`;
+  // 直接使用 Google Drive 直連網址（需將 & 轉義為 &amp; 避免 XML 解析錯誤）
+  const audioUrl = `https://drive.google.com/uc?export=download&amp;id=${file.id}`;
   const duration = Math.floor(size / 16000);
 
   // Stable GUID: based on filename, not position
