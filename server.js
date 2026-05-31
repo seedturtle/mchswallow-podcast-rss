@@ -181,16 +181,70 @@ function matonFetch(path, opts = {}) {
   });
 }
 
+// ── 日期排序 ─────────────────────────────────────────────────────────
+
+/**
+ * 從檔名提取日期 YYYYMMDD（支援格式：YYYYMMDD, YYYY_MM_DD, YYYY-MM-DD）
+ * 無日期則回傳 null
+ */
+function extractDate(name) {
+  const m = name.match(/(\d{4})[_-]?(\d{2})[_-]?(\d{2})/);
+  return m ? parseInt(`${m[1]}${m[2]}${m[3]}`, 10) : null;
+}
+
+/**
+ * 從檔名提取版本號（_v2 → 2, _v3 → 3, 無後綴 → 0）
+ */
+function extractVersion(name) {
+  const m = name.match(/_v(\d+)/i);
+  return m ? parseInt(m[1], 10) : 0;
+}
+
+/**
+ * 以檔名日期排序，同日期只保留最新版
+ * 規則：
+ *   1) 只保留有日期的檔案
+ *   2) 同日期多檔案：取版本號最高者
+ *   3) 依日期升冪（ASC）排序
+ *   4) 無日期的檔案排在最後
+ */
+function sortFilesByDate(files) {
+  const grouped = {};
+  const noDate = [];
+
+  for (const f of files) {
+    const dateNum = extractDate(f.name);
+    if (dateNum === null) {
+      noDate.push(f);
+      continue;
+    }
+    const version = extractVersion(f.name);
+    const key = String(dateNum);
+    if (!grouped[key] || version > grouped[key].version) {
+      grouped[key] = { ...f, dateNum, version };
+    }
+  }
+
+  const sorted = Object.values(grouped)
+    .sort((a, b) => a.dateNum - b.dateNum)
+    .map((f) => {
+      const { dateNum, version, ...file } = f;
+      return file;
+    });
+
+  return sorted.concat(noDate);
+}
+
 async function getAudioFiles() {
   const query = encodeURIComponent(`'${PODCAST_FOLDER_ID}' in parents and mimeType='audio/mpeg' and trashed=false`);
   const res = await matonFetch(
-    `/google-drive/drive/v3/files?q=${query}&fields=files(id,name,mimeType,createdTime,size)&orderBy=createdTime asc`
+    `/google-drive/drive/v3/files?q=${query}&fields=files(id,name,mimeType,createdTime,size)`
   );
   if (res.status !== 200 || !res.body.files) {
     console.error("[RSS] Error:", res.body.message || JSON.stringify(res.body));
     return [];
   }
-  return res.body.files;
+  return sortFilesByDate(res.body.files);
 }
 
 // ── RSS Helpers ─────────────────────────────────────────────────────
@@ -222,7 +276,14 @@ function parseEpisodeMeta(file, index, totalFiles, id3meta) {
       ? id3meta.comment
       : `${PODCAST_TITLE}，${title}。${PODCAST_DESCRIPTION}`;
 
-  const pubDate = rfc2822(file.createdTime ? new Date(file.createdTime) : null);
+  // pubDate：優先使用檔名日期（比 createdTime 可靠）
+  let pubDate;
+  if (dateMatch) {
+    const [, y, m, d] = dateMatch;
+    pubDate = rfc2822(new Date(`${y}-${m}-${d}T12:00:00Z`));
+  } else {
+    pubDate = rfc2822(file.createdTime ? new Date(file.createdTime) : null);
+  }
   const size = parseInt(file.size || 0);
   const audioUrl = `${SITE_URL.replace(/\/$/, "")}/audio/ep${episodeNum}.mp3`;
   const duration = Math.floor(size / 16000);
