@@ -334,7 +334,7 @@ function buildRSS(files, id3meta) {
     <title>${PODCAST_TITLE}</title>
     <link>${base}/</link>
     <description><![CDATA[${PODCAST_DESCRIPTION}]]></description>
-    <language>zh</language>
+    <language>zh-tw</language>
     <copyright>Copyright ${new Date().getFullYear()} ${PODCAST_AUTHOR}</copyright>
     <lastBuildDate>${now}</lastBuildDate>
     <image>
