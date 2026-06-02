@@ -14,7 +14,7 @@ const PODCAST_TITLE = process.env.PODCAST_TITLE || "洄瀾聽雨";
 const PODCAST_DESCRIPTION = process.env.PODCAST_DESCRIPTION || "吞嚥復健、嗓音治療、構音治療、失語症復健、聽力復健、語言發展遲緩、流暢性治療與臨床經驗分享。歡迎聽眾寫信到 mchswallow@gmail.com 提問或表達意見，主持人會在製作新集數時參考大家的回饋一起討論！";
 const PODCAST_AUTHOR = process.env.PODCAST_AUTHOR || "洄瀾聽語團隊";
 const PODCAST_EMAIL = process.env.PODCAST_EMAIL || "mchswallow@gmail.com";
-const PODCAST_COVER_URL = process.env.PODCAST_COVER_URL || `${SITE_URL.replace(/\/$/, "")}/cover-v4.png`;
+const PODCAST_COVER_URL = process.env.PODCAST_COVER_URL || `${SITE_URL.replace(/\/$/, "")}/cover-v5.png`;
 
 // ── ID3 Metadata Cache ─────────────────────────────────────────────
 const ID3_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
@@ -302,7 +302,9 @@ function parseEpisodeMeta(file, index, totalFiles, id3meta) {
 
   // Stable GUID: based on filename + file ID (與拉拉熊做法一致)
   // file.id 確保唯一性，即使同名檔案重新上傳也是不同 ID
-  const guid = `huilan_tingyu_${file.name.replace(/\.mp3$/i, "")}_${file.id}`;
+  // Sanitize: remove non-ASCII chars + non-alphanumeric (Apple requires ASCII-only GUID)
+  const safeName = file.name.replace(/\.mp3$/i, "").replace(/[^\x20-\x7E]/g, "");
+  const guid = `huilan_tingyu_${safeName}_${file.id}`;
 
   return { title, description, pubDate, size, audioUrl, duration, episodeNum, guid };
 }
@@ -542,9 +544,9 @@ const server = http.createServer(async (req, res) => {
   }
 
   // ── Cover images ──
-  if (pathname === "/cover.png" || pathname === "/cover-v2.png" || pathname === "/cover-v4.png") {
+  if (pathname === "/cover.png" || pathname === "/cover-v2.png" || pathname === "/cover-v5.png") {
     let coverFile;
-    if (pathname === "/cover-v4.png") coverFile = "cover-v4.png";
+    if (pathname === "/cover-v5.png") coverFile = "cover-v5.png";
     else if (pathname === "/cover-v2.png") coverFile = "cover-v2.png";
     else coverFile = "cover.png";
     const coverPath = path.join(__dirname, "public", coverFile);
@@ -646,7 +648,7 @@ const server = http.createServer(async (req, res) => {
   </style>
 </head>
 <body>
-  <img src="/cover-v4.png" alt="${PODCAST_TITLE}">
+  <img src="/cover-v5.png" alt="${PODCAST_TITLE}">
   <h1>${PODCAST_TITLE}</h1>
   <p>${PODCAST_DESCRIPTION}</p>
   <p>📻 ${PODCAST_AUTHOR}</p>
