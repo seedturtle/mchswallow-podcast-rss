@@ -237,14 +237,24 @@ function sortFilesByDate(files) {
 
 async function getAudioFiles() {
   const query = encodeURIComponent(`'${PODCAST_FOLDER_ID}' in parents and mimeType='audio/mpeg' and trashed=false`);
-  const res = await matonFetch(
-    `/google-drive/drive/v3/files?q=${query}&fields=files(id,name,mimeType,createdTime,size)`
-  );
-  if (res.status !== 200 || !res.body.files) {
-    console.error("[RSS] Error:", res.body.message || JSON.stringify(res.body));
-    return [];
-  }
-  return sortFilesByDate(res.body.files);
+  const allFiles = [];
+  let pageToken = "";
+
+  do {
+    const pagination = pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : "";
+    const res = await matonFetch(
+      `/google-drive/drive/v3/files?q=${query}&pageSize=1000&fields=nextPageToken,files(id,name,mimeType,createdTime,size)${pagination}`
+    );
+    if (res.status !== 200 || !res.body.files) {
+      console.error("[RSS] Error:", res.body.message || JSON.stringify(res.body));
+      return allFiles.length ? sortFilesByDate(allFiles) : [];
+    }
+    allFiles.push(...res.body.files);
+    pageToken = res.body.nextPageToken || "";
+    console.log(`[RSS] Fetched ${res.body.files.length} files${pageToken ? ", more pages..." : ", all done."}`);
+  } while (pageToken);
+
+  return sortFilesByDate(allFiles);
 }
 
 // ── RSS Helpers ─────────────────────────────────────────────────────
