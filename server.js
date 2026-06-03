@@ -201,6 +201,16 @@ function extractVersion(name) {
 }
 
 /**
+ * 從檔名提取特輯類別（_amis → "amis", _special → "special"）
+ * 無特輯標記回傳 "main"（正規集）
+ * 同一日期可同時有正規集和特輯集
+ */
+function extractCategory(name) {
+  const m = name.match(/_(amis|special|test|english)(?:\.mp3|_v\d)/i);
+  return m ? m[1].toLowerCase() : 'main';
+}
+
+/**
  * 以檔名日期排序，同日期只保留最新版
  * 規則：
  *   1) 只保留有日期的檔案
@@ -219,7 +229,8 @@ function sortFilesByDate(files) {
       continue;
     }
     const version = extractVersion(f.name);
-    const key = String(dateNum);
+    const category = extractCategory(f.name);
+    const key = `${dateNum}_${category}`;
     if (!grouped[key] || version > grouped[key].version) {
       grouped[key] = { ...f, dateNum, version };
     }
