@@ -201,12 +201,12 @@ function extractVersion(name) {
 }
 
 /**
- * 從檔名提取特輯類別（_amis → "amis", _special → "special"）
+ * 從檔名提取特輯類別（_amis → "amis", _edar → "edar", _special → "special"）
  * 無特輯標記回傳 "main"（正規集）
- * 同一日期可同時有正規集和特輯集
+ * 同一日期可同時有正規集和多種特輯集
  */
 function extractCategory(name) {
-  const m = name.match(/_(amis|special|test|english)(?:\.mp3|_v\d)/i);
+  const m = name.match(/_(amis|edar|special|test|english)(?:\.mp3|_v\d)/i);
   return m ? m[1].toLowerCase() : 'main';
 }
 
