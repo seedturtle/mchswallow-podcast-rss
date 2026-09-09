@@ -292,10 +292,13 @@ function parseEpisodeMeta(file, index, totalFiles, id3meta) {
   }
 
   // Prefer ID3 comment as description, fallback to default
-  const description =
+  let description =
     id3meta && id3meta.comment
       ? id3meta.comment
       : `${PODCAST_TITLE}，${title}。${PODCAST_DESCRIPTION}`;
+  // 2026-09-09 RSS server 搬家：舊網域 mchswallowpodcast.zeabur.app 已停用。
+  // 早期音檔 ID3 comment 內嵌的舊網域文字需替換為新網域，避免 feed 內殘留死連結。
+  description = description.replace(/mchswallowpodcast\.zeabur\.app/g, "swallow-podcast-rss.zeabur.app");
 
   // pubDate：優先使用檔名日期（比 createdTime 可靠）
   let pubDate;
