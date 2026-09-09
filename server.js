@@ -5,7 +5,7 @@ const path = require("path");
 const { URL } = require("url");
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
-const SITE_URL = process.env.SITE_URL || "https://mchswallowpodcast.zeabur.app";
+const SITE_URL = process.env.SITE_URL || "https://swallow-podcast-rss.zeabur.app";
 const PODCAST_FOLDER_ID = process.env.PODCAST_FOLDER_ID || "1Yiwx-jIqmw37TvbMl5dDbVPcgetEPzIW";
 const MATON_API_KEY = process.env.MATON_API_KEY || "";
 // 支援 MATON_CONN（README 標準）或 MATON_CONNECTION_ID（舊版）
