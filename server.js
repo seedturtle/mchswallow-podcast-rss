@@ -5,7 +5,7 @@ const path = require("path");
 const { URL } = require("url");
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
-const SITE_URL = process.env.SITE_URL || "https://swallow-podcast-rss.zeabur.app";
+const SITE_URL = process.env.SITE_URL || "https://mchswallowpodcast.zeabur.app";
 const PODCAST_FOLDER_ID = process.env.PODCAST_FOLDER_ID || "1Yiwx-jIqmw37TvbMl5dDbVPcgetEPzIW";
 const MATON_API_KEY = process.env.MATON_API_KEY || "";
 // 支援 MATON_CONN（README 標準）或 MATON_CONNECTION_ID（舊版）
@@ -296,9 +296,10 @@ function parseEpisodeMeta(file, index, totalFiles, id3meta) {
     id3meta && id3meta.comment
       ? id3meta.comment
       : `${PODCAST_TITLE}，${title}。${PODCAST_DESCRIPTION}`;
-  // 2026-09-09 RSS server 搬家：舊網域 mchswallowpodcast.zeabur.app 已停用。
-  // 早期音檔 ID3 comment 內嵌的舊網域文字需替換為新網域，避免 feed 內殘留死連結。
-  description = description.replace(/mchswallowpodcast\.zeabur\.app/g, "swallow-podcast-rss.zeabur.app");
+  // 2026-09-09 RSS server 搬家至新 Zeabur 服務（swallow-podcast-rss），
+  // 但對外正式網域仍為 mchswallowpodcast.zeabur.app（Apple/Spotify 後台不變）。
+  // 過渡期間可能殘留的 swallow-podcast-rss 網域文字一律換回正式網域。
+  description = description.replace(/swallow-podcast-rss\.zeabur\.app/g, "mchswallowpodcast.zeabur.app");
 
   // pubDate：優先使用檔名日期（比 createdTime 可靠）
   let pubDate;
