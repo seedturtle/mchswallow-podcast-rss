@@ -663,7 +663,6 @@ const server = http.createServer(async (req, res) => {
   <h1>${PODCAST_TITLE}</h1>
   <p>${PODCAST_DESCRIPTION}</p>
   <p>📻 ${PODCAST_AUTHOR}</p>
-  <p style="color:#aaa;font-size:0.7rem;">deploy-v2-20260909</p>
   <a class="badge" href="/feed.xml">訂閱 RSS Feed</a>
 </body>
 </html>`);
